@@ -1,0 +1,2462 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Lego Kodlama Köyü 3D - 6 Yaş Algoritma & İnşa Macerası</title>
+  
+  <!-- Tailwind CSS & Google Font -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- 3D Kütüphaneleri & Ses -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <script src="./finish_sign_b64.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      font-family: 'Fredoka', cursive, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      background: #7dd3fc;
+    }
+
+    /* 3D Lego Butonları */
+    .lego-btn {
+      transition: all 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 5px 0 rgba(0, 0, 0, 0.28), 0 6px 10px rgba(0, 0, 0, 0.16);
+    }
+    .lego-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 7px 0 rgba(0, 0, 0, 0.28), 0 10px 14px rgba(0, 0, 0, 0.2);
+    }
+    .lego-btn:active {
+      transform: translateY(3px);
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.28), 0 3px 5px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Lego Stud Efekti */
+    .lego-stud {
+      background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.1) 45%, rgba(0,0,0,0.35) 100%);
+      box-shadow: inset 0 2px 3px rgba(255,255,255,0.7), 0 3px 4px rgba(0,0,0,0.35);
+    }
+
+    /* Adım Çalıştırma Efekti (Aktif Yürütülen Adım Sarı) */
+    @keyframes pulseStep {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.12); }
+    }
+    .active-executing {
+      animation: pulseStep 0.35s infinite alternate;
+      outline: 4px solid #facc15 !important;
+      background: #fef08a !important;
+      box-shadow: 0 0 18px #facc15 !important;
+      z-index: 10;
+    }
+
+    /* Hatalı Kodlama Adımı (KIRMIZI + SALLANMA EFEKTİ) */
+    @keyframes shakeError {
+      0%, 100% { transform: translateX(0) scale(1.1); }
+      20%, 60% { transform: translateX(-5px) scale(1.1); }
+      40%, 80% { transform: translateX(5px) scale(1.1); }
+    }
+    .error-step {
+      animation: shakeError 0.45s ease-in-out;
+      background: #ef4444 !important;
+      color: #ffffff !important;
+      border-color: #991b1b !important;
+      border-width: 3px !important;
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.95), 0 4px 10px rgba(0, 0, 0, 0.35) !important;
+      z-index: 30;
+    }
+    .error-step span {
+      color: #ffffff !important;
+    }
+
+    /* İnşaat Parçası Bekleme Nabzı */
+    @keyframes buildPulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(16, 185, 129, 0.4); }
+      50% { transform: scale(1.08); box-shadow: 0 0 20px rgba(16, 185, 129, 0.8); }
+    }
+    .build-active {
+      animation: buildPulse 0.9s infinite ease-in-out;
+      border-color: #10b981 !important;
+      background: #d1fae5 !important;
+    }
+
+    /* Kod Adımı Kartları & Sürükle-Bırak */
+    .step-card {
+      transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+      touch-action: pan-x;
+    }
+    .step-card.dragging {
+      opacity: 0.4;
+      transform: scale(0.92);
+    }
+    .step-card.drag-target {
+      outline: 3px dashed #2563eb !important;
+      transform: scale(1.08) !important;
+      background-color: #dbeafe !important;
+    }
+
+    /* 3D Canvas Konteyneri */
+    #threeCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* Arayüz Katmanı */
+    #uiLayer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 8px 10px 0 10px;
+    }
+
+    .pointer-auto {
+      pointer-events: auto;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="w-screen h-screen">
+
+  <!-- 3D WebGL Canvas -->
+  <div id="threeCanvas"></div>
+
+  <!-- Arayüz Katmanı (UI) -->
+  <div id="uiLayer">
+
+    <!-- ÜST ÇUBUK: Karakter Bilgisi, Dünya/Bölüm & EN ÜSTTE SABİT GÖREV PANELİ -->
+    <header class="w-full max-w-2xl mx-auto bg-white/95 backdrop-blur-md rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 shadow-xl border-3 border-amber-300 pointer-auto space-y-1.5">
+      
+      <!-- Üst Satır: Profil, Dünya & Seviye Rozetleri, Kamera Butonları -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <!-- BİLFEN LOGOSU -->
+          <img src="./bilfen_logo.png" onerror="this.src='C:/Users/Bilfen/.gemini/antigravity/scratch/lego-kodlama-koyu-3d/bilfen_logo.png'" alt="Bilfen" class="h-8 sm:h-9 object-contain rounded-xl shadow-sm cursor-pointer hover:scale-105 transition-transform" onclick="openStartScreen()" title="Bilfen Eğitim Kurumları" />
+
+          <div id="headerAvatar" class="w-10 h-10 sm:w-11 sm:h-11 bg-amber-100 rounded-2xl border-2 border-amber-400 p-0.5 flex items-center justify-center shadow-inner cursor-pointer hover:scale-105 transition-transform" onclick="openStartScreen()" title="Karakteri Değiştir">
+            <!-- Minifigure Avatarı SVG -->
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span id="worldBadge" class="bg-blue-600 text-white font-black px-2 py-0.2 rounded-full text-[10px] tracking-wide shadow-sm">🌳 AĞAÇ</span>
+              <span id="levelBadge" class="bg-yellow-400 text-yellow-950 font-black px-2 py-0.2 rounded-full text-xs shadow-sm cursor-pointer hover:bg-yellow-300 transition-colors" onclick="openLevelSelectModal()" title="Bölüm Değiştir">1 / 15</span>
+              <button onclick="openLevelSelectModal()" class="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded-lg text-[10px] font-black shadow-sm lego-btn flex items-center gap-0.5" title="Tüm Bölümleri Gör">
+                <span>🗺️</span><span class="hidden sm:inline">Bölümler</span>
+              </button>
+            </div>
+            <div id="levelTargetTitle" class="text-xs sm:text-sm font-extrabold text-blue-700 leading-tight">
+              Ağacın Kökü
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <!-- 5 Bölümlük Parça Çantası Rozetleri -->
+          <div class="hidden sm:flex items-center gap-1 bg-amber-50 border border-amber-300 px-2 py-1 rounded-xl shadow-inner" id="treePartsProgress" title="Toplanan Parçalar">
+            <span id="partIcon-1" class="text-sm opacity-30 grayscale transition-all">🪵</span>
+            <span id="partIcon-2" class="text-sm opacity-30 grayscale transition-all">🪵</span>
+            <span id="partIcon-3" class="text-sm opacity-30 grayscale transition-all">🍃</span>
+            <span id="partIcon-4" class="text-sm opacity-30 grayscale transition-all">🌿</span>
+            <span id="partIcon-5" class="text-sm opacity-30 grayscale transition-all">🍎</span>
+          </div>
+
+          <!-- Parça Sayacı -->
+          <div class="flex items-center gap-1 bg-amber-100 border border-amber-300 px-2.5 py-1.5 rounded-xl shadow-sm">
+            <div class="w-3.5 h-3.5 rounded bg-amber-600 lego-stud"></div>
+            <span id="brickCounter" class="font-black text-amber-900 text-xs sm:text-sm">0 / 2</span>
+          </div>
+
+          <!-- Kamera Butonları -->
+          <button id="cameraToggleBtn" onclick="toggleCameraView()" title="Kamera Açısını Değiştir" class="bg-sky-500 hover:bg-sky-600 text-white px-2 py-1.5 rounded-xl text-xs font-black shadow-md lego-btn flex items-center gap-1">
+            <span>🎥</span> <span>3D</span>
+          </button>
+
+          <button onclick="rotateView()" title="Bakış Açısını Döndür" class="bg-amber-400 hover:bg-amber-500 text-amber-950 p-1.5 rounded-xl text-xs font-black shadow-md lego-btn">
+            🔄
+          </button>
+
+          <button onclick="openStartScreen()" title="Ana Menü & Karakter Seçimi" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-1.5 rounded-xl text-xs font-bold shadow-md lego-btn">
+            🏠
+          </button>
+        </div>
+      </div>
+
+      <!-- Alt Satır: EKRANIN EN ÜSTÜNDE SABİT GÖREV YÖNERGESİ (ORTAYI ASLA KAPATMAZ) -->
+      <div id="instructionBanner" class="bg-emerald-600 text-white px-3 py-1 sm:py-1.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-sm flex items-center gap-2 border border-emerald-400">
+        <span class="text-sm sm:text-base leading-none">🎯</span>
+        <span class="text-emerald-200 uppercase text-[10px] tracking-wider font-black whitespace-nowrap">GÖREV:</span>
+        <span id="instructionText" class="truncate font-bold">2 adet kahverengi gövde parçasını topla ve hedefe taşı!</span>
+      </div>
+
+    </header>
+
+    <!-- NORMAL KODLAMA ALT PANELİ (En Alta Yaslı, Kompakt) -->
+    <footer id="codingFooter" class="w-full max-w-xl mx-auto bg-white/95 backdrop-blur-md rounded-t-3xl rounded-b-none p-2 sm:p-2.5 shadow-2xl border-t-3 border-x-3 border-amber-300 pointer-auto space-y-1.5 mb-0">
+      
+      <!-- Algoritma Dizisi (Komut Sırası Tepsisi) -->
+      <div>
+        <div class="flex justify-between items-center mb-0.5 px-1">
+          <span class="text-[11px] sm:text-xs font-black text-slate-600 uppercase tracking-wide flex items-center gap-1">
+            <span>📋</span> Kod Dizisi <span class="text-[10px] text-blue-600 font-bold hidden sm:inline">(Sürükle veya ◀ ▶ ile Sırala):</span>
+          </span>
+          <button onclick="clearCommands()" class="text-[11px] font-black text-rose-600 hover:text-rose-700 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200 transition-colors">
+            Temizle ✕
+          </button>
+        </div>
+
+        <div id="commandTray" class="flex items-center gap-1.5 min-h-[60px] sm:min-h-[66px] p-1.5 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 overflow-x-auto no-scrollbar">
+          <span id="emptyTrayText" class="text-xs text-slate-400 font-bold mx-auto flex items-center gap-1">
+            👇 Oklara dokunarak adımları sıraya diz! (◀ ▶ veya sürükleyerek sırasını değiştirebilirsin)
+          </span>
+        </div>
+      </div>
+
+      <!-- Büyük Lego Yön Butonları & Çalıştır -->
+      <div class="grid grid-cols-5 gap-1.5">
+        <button onclick="addCommand('left')" class="lego-btn bg-amber-400 hover:bg-amber-500 border-b-3 border-amber-600 text-amber-950 font-black rounded-xl py-2 flex flex-col items-center justify-center">
+          <span class="text-xl sm:text-2xl leading-none">⬅️</span>
+          <span class="text-[9px] sm:text-[10px] mt-0.5 font-black">SOL</span>
+        </button>
+
+        <button onclick="addCommand('up')" class="lego-btn bg-blue-500 hover:bg-blue-600 border-b-3 border-blue-700 text-white font-black rounded-xl py-2 flex flex-col items-center justify-center">
+          <span class="text-xl sm:text-2xl leading-none">⬆️</span>
+          <span class="text-[9px] sm:text-[10px] mt-0.5 font-black">YUKARI</span>
+        </button>
+
+        <button onclick="addCommand('down')" class="lego-btn bg-blue-500 hover:bg-blue-600 border-b-3 border-blue-700 text-white font-black rounded-xl py-2 flex flex-col items-center justify-center">
+          <span class="text-xl sm:text-2xl leading-none">⬇️</span>
+          <span class="text-[9px] sm:text-[10px] mt-0.5 font-black">AŞAĞI</span>
+        </button>
+
+        <button onclick="addCommand('right')" class="lego-btn bg-amber-400 hover:bg-amber-500 border-b-3 border-amber-600 text-amber-950 font-black rounded-xl py-2 flex flex-col items-center justify-center">
+          <span class="text-xl sm:text-2xl leading-none">➡️</span>
+          <span class="text-[9px] sm:text-[10px] mt-0.5 font-black">SAĞ</span>
+        </button>
+
+        <button id="runButton" onclick="runAlgorithm()" class="lego-btn bg-emerald-500 hover:bg-emerald-600 border-b-3 border-emerald-700 text-white font-black rounded-xl py-2 flex flex-col items-center justify-center">
+          <span class="text-xl sm:text-2xl leading-none">▶️</span>
+          <span class="text-[9px] sm:text-[10px] mt-0.5 font-black">BAŞLAT</span>
+        </button>
+      </div>
+    </footer>
+
+    <!-- ETKİLEŞİMLİ LEGO BİRLEŞTİRME & İNŞA PANELİ (5 Görev Sonrası Açılır) -->
+    <footer id="buildModeFooter" class="hidden w-full max-w-xl mx-auto bg-white/95 backdrop-blur-md rounded-t-3xl p-3 shadow-2xl border-t-3 border-x-3 border-emerald-400 pointer-auto space-y-2 mb-0">
+      <div class="flex justify-between items-center px-1">
+        <div class="flex items-center gap-1.5">
+          <span class="text-xl">🔨</span>
+          <span class="text-xs sm:text-sm font-black text-emerald-800 uppercase tracking-wide">
+            Şimdi Sıra Sende: Parçaları Kendin Birleştir!
+          </span>
+        </div>
+        <span id="buildStepBadge" class="bg-emerald-600 text-white font-black text-xs px-2.5 py-0.5 rounded-full">
+          Adım 1 / 5
+        </span>
+      </div>
+
+      <p class="text-xs text-slate-600 font-bold px-1" id="buildInstructionText">
+        Sıradaki parçaya dokun ve yerine oturt!
+      </p>
+
+      <!-- 5 Parçalık İnşa Tepsisi -->
+      <div id="buildPiecesTray" class="grid grid-cols-5 gap-1.5 py-1">
+        <!-- JS ile 5 parçanın butonu doldurulacak -->
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- BAŞLANGIÇ EKRANI & KARAKTER SEÇİMİ (MODAL) -->
+  <div id="startScreen" class="fixed inset-0 bg-sky-900/60 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4">
+    <div class="max-w-md w-full bg-white/95 rounded-3xl p-6 shadow-2xl border-4 border-yellow-400 text-center relative max-h-[95vh] overflow-y-auto no-scrollbar">
+      
+      <!-- BİLFEN LOGOSU -->
+      <div class="flex justify-center mb-2">
+        <img src="./bilfen_logo.png" onerror="this.src='C:/Users/Bilfen/.gemini/antigravity/scratch/lego-kodlama-koyu-3d/bilfen_logo.png'" alt="Bilfen Eğitim Kurumları" class="h-14 sm:h-16 object-contain drop-shadow-md rounded-2xl hover:scale-105 transition-transform" />
+      </div>
+
+      <!-- Lego Stud Başlık -->
+      <div class="flex justify-center items-center gap-2 mb-2">
+        <div class="w-6 h-6 rounded-full bg-red-500 lego-stud"></div>
+        <div class="w-6 h-6 rounded-full bg-blue-500 lego-stud"></div>
+        <div class="w-6 h-6 rounded-full bg-yellow-400 lego-stud"></div>
+        <div class="w-6 h-6 rounded-full bg-green-500 lego-stud"></div>
+      </div>
+
+      <h1 class="text-3xl sm:text-4xl font-black text-blue-600 tracking-wide drop-shadow-sm">
+        LEGO KODLAMA KÖYÜ 3D
+      </h1>
+      <p class="text-slate-600 text-sm sm:text-base mt-1 font-bold">
+        3 Büyük Dünya (Ağaç, Ev, Bilgisayar) & 15 Bölümlük İnşa Macerası! 🌳🏠💻
+      </p>
+
+      <!-- Karakter Seçim Alanı -->
+      <div class="mt-4 text-left">
+        <p class="font-extrabold text-slate-700 text-xs sm:text-sm mb-2 text-center">👇 3D Lego Kahramanını Seç:</p>
+        <div class="grid grid-cols-4 gap-2" id="characterPicker">
+          <button onclick="selectHero('leo')" class="hero-opt p-2 rounded-2xl border-4 border-red-500 bg-red-50 flex flex-col items-center transition-all hover:scale-105 active:scale-95 shadow" id="heroBtn-leo">
+            <div id="heroPreview-leo" class="w-14 h-16 flex items-center justify-center"></div>
+            <span class="text-xs font-black mt-1 text-red-600">Leo</span>
+          </button>
+
+          <button onclick="selectHero('ela')" class="hero-opt p-2 rounded-2xl border-2 border-slate-200 bg-sky-50 flex flex-col items-center transition-all hover:scale-105 active:scale-95 shadow" id="heroBtn-ela">
+            <div id="heroPreview-ela" class="w-14 h-16 flex items-center justify-center"></div>
+            <span class="text-xs font-black mt-1 text-sky-600">Ela</span>
+          </button>
+
+          <button onclick="selectHero('can')" class="hero-opt p-2 rounded-2xl border-2 border-slate-200 bg-green-50 flex flex-col items-center transition-all hover:scale-105 active:scale-95 shadow" id="heroBtn-can">
+            <div id="heroPreview-can" class="w-14 h-16 flex items-center justify-center"></div>
+            <span class="text-xs font-black mt-1 text-green-700">Can</span>
+          </button>
+
+          <button onclick="selectHero('maya')" class="hero-opt p-2 rounded-2xl border-2 border-slate-200 bg-purple-50 flex flex-col items-center transition-all hover:scale-105 active:scale-95 shadow" id="heroBtn-maya">
+            <div id="heroPreview-maya" class="w-14 h-16 flex items-center justify-center"></div>
+            <span class="text-xs font-black mt-1 text-purple-600">Maya</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 3 Büyük Dünya Özeti -->
+      <div class="mt-4 bg-amber-50 p-3 rounded-2xl border border-amber-200 text-left text-xs text-slate-700 space-y-1.5">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🌳</span>
+          <span><b>1-5. Bölüm:</b> Büyük Lego Ağacı parçalarını topla ve kendi ellerinle kur!</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🏠</span>
+          <span><b>6-10. Bölüm:</b> Duvar, kapı, pencere ve çatı toplayıp Sıcak Lego Evi inşa et!</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-lg">💻</span>
+          <span><b>11-15. Bölüm:</b> Kasa, ekran, klavye ve fareyle Lego Bilgisayarı birleştir!</span>
+        </div>
+      </div>
+
+      <button onclick="startGame()" class="mt-5 w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xl sm:text-2xl rounded-2xl lego-btn border-b-4 border-emerald-700 flex items-center justify-center gap-2">
+        <span>MACERAYA BAŞLA!</span>
+        <span class="text-2xl">🚀</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- BÖLÜM SEÇİM MODALI (1 - 15) -->
+  <div id="levelSelectModal" class="fixed inset-0 bg-black/60 backdrop-blur-md z-50 hidden flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white rounded-3xl p-4 sm:p-5 max-w-lg w-full text-center border-4 border-amber-400 shadow-2xl max-h-[90vh] flex flex-col pointer-auto">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <img src="./bilfen_logo.png" onerror="this.src='C:/Users/Bilfen/.gemini/antigravity/scratch/lego-kodlama-koyu-3d/bilfen_logo.png'" alt="Bilfen" class="h-7 object-contain rounded-lg shadow-xs" />
+          <h3 class="text-lg sm:text-2xl font-black text-blue-700 flex items-center gap-1.5">
+            <span>🗺️</span> <span>Bölüm Seç (1 - 15)</span>
+          </h3>
+        </div>
+        <button onclick="closeLevelSelectModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 font-black text-base flex items-center justify-center transition-colors">
+          ✕
+        </button>
+      </div>
+
+      <div class="overflow-y-auto py-3 space-y-3 flex-1 text-left pr-1" id="levelSelectListHolder">
+        <!-- JS ile 3 dünya ve 15 seviye dinamik render edilir -->
+      </div>
+    </div>
+  </div>
+
+  <!-- KUTLAMA VE BÖLÜM GEÇİŞ MODALI -->
+  <div id="celebrationModal" class="fixed inset-0 bg-black/60 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl p-6 max-w-md w-full text-center border-4 border-yellow-400 shadow-2xl transform scale-95 transition-all">
+      <div class="flex justify-center mb-1">
+        <img src="./bilfen_logo.png" onerror="this.src='C:/Users/Bilfen/.gemini/antigravity/scratch/lego-kodlama-koyu-3d/bilfen_logo.png'" alt="Bilfen" class="h-8 object-contain rounded-lg drop-shadow-xs" />
+      </div>
+      <div class="text-4xl mb-1" id="modalEmojiHeader">🎉 🪵 🧱</div>
+      <h3 class="text-2xl font-black text-blue-600" id="modalTitle">TEBRİKLER!</h3>
+      <p class="text-slate-600 text-sm mt-1 font-bold" id="modalDesc">
+        Parçaları topladın ve inşa alanına ulaştın!
+      </p>
+
+      <div id="modalVisualHolder" class="my-4 p-4 bg-gradient-to-b from-sky-100 to-emerald-100 rounded-2xl border-2 border-emerald-300 flex flex-col justify-center items-center min-h-[130px]">
+        <div id="modalSvgPiece" class="scale-125 mb-2"></div>
+        <div id="modalPieceName" class="bg-white/90 px-3 py-1 rounded-full text-xs font-black text-emerald-800 shadow">
+          Ağaç Parçası
+        </div>
+      </div>
+
+      <button id="modalActionBtn" onclick="nextLevel()" class="w-full py-3.5 bg-yellow-400 hover:bg-yellow-500 border-b-4 border-yellow-600 text-yellow-950 font-black text-lg rounded-2xl lego-btn">
+        SONRAKİ BÖLÜME GEÇ ➔
+      </button>
+    </div>
+  </div>
+
+  <!-- TOAST BİLGİLENDİRME (HATA/UYARI) -->
+  <div id="toastMessage" class="fixed top-5 left-1/2 -translate-x-1/2 bg-rose-500 text-white px-5 py-2.5 rounded-2xl shadow-2xl border-2 border-white font-black text-sm flex items-center gap-2 transform -translate-y-28 transition-transform duration-300 z-50 pointer-events-none">
+    <span id="toastIcon">⚠️</span>
+    <span id="toastText">Bir hata oluştu!</span>
+  </div>
+
+  <!-- 3D OYUN VE LEGO MOTORU KODU -->
+  <script>
+    /* ==========================================================================
+       1. SES SİSTEMİ (TONE.JS)
+       ========================================================================== */
+    let synth, metalSynth, audioStarted = false;
+
+    function initAudio() {
+      if (!audioStarted && window.Tone) {
+        Tone.start();
+        synth = new Tone.PolySynth(Tone.Synth, {
+          oscillator: { type: 'triangle' },
+          envelope: { attack: 0.01, decay: 0.08, sustain: 0.05, release: 0.15 }
+        }).toDestination();
+
+        metalSynth = new Tone.MembraneSynth({
+          pitchDecay: 0.02,
+          octaves: 2.5,
+          oscillator: { type: 'sine' },
+          envelope: { attack: 0.001, decay: 0.08, sustain: 0 }
+        }).toDestination();
+        audioStarted = true;
+      }
+    }
+
+    function playSound(type) {
+      initAudio();
+      if (!synth) return;
+      try {
+        const now = Tone.now();
+        if (type === 'click') {
+          synth.triggerAttackRelease("C5", "32n", now);
+        } else if (type === 'step') {
+          synth.triggerAttackRelease("E5", "32n", now, 0.4);
+          if (metalSynth) metalSynth.triggerAttackRelease("G2", "32n", now, 0.2);
+        } else if (type === 'brick') {
+          synth.triggerAttackRelease(["G5", "C6"], "24n", now);
+          if (metalSynth) metalSynth.triggerAttackRelease("E3", "32n", now + 0.015, 0.5);
+        } else if (type === 'snap') {
+          synth.triggerAttackRelease(["C5", "G5", "E6"], "16n", now);
+          if (metalSynth) metalSynth.triggerAttackRelease("C3", "32n", now, 0.7);
+        } else if (type === 'bump') {
+          synth.triggerAttackRelease(["D3", "C3"], "12n", now);
+        } else if (type === 'win') {
+          synth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "10n", now);
+        } else if (type === 'fanfare') {
+          const notes = ["C4", "E4", "G4", "C5", "E5", "G5", "C6", "G6"];
+          notes.forEach((n, i) => {
+            synth.triggerAttackRelease(n, "16n", now + (i * 0.08));
+          });
+        }
+      } catch (e) {}
+    }
+
+    /* ==========================================================================
+       2. KARAKTER VERİLERİ (LEGO MİNİFİGÜRLER)
+       ========================================================================== */
+    const HEROES = {
+      leo: { name: "Usta Leo", hatType: "cap", hatColor: 0xef4444, torsoColor: 0xef4444, legsColor: 0x1e3a8a },
+      ela: { name: "Çiftçi Ela", hatType: "hair", hatColor: 0xf59e0b, torsoColor: 0x0284c7, legsColor: 0x0369a1 },
+      can: { name: "Kaşif Can", hatType: "safari", hatColor: 0x15803d, torsoColor: 0x16a34a, legsColor: 0x475569 },
+      maya: { name: "Sihirli Maya", hatType: "helmet", hatColor: 0x9333ea, torsoColor: 0xa855f7, legsColor: 0x581c87 }
+    };
+    let selectedHeroKey = 'leo';
+
+    /* ==========================================================================
+       3. 15 BÖLÜMLÜK BÜYÜK LEGO MACERASI VERİLERİ (AĞAÇ, EV, BİLGİSAYAR)
+       ========================================================================== */
+    const WORLDS = [
+      { id: 0, key: 'tree', title: '🌳 AĞAÇ', name: 'Büyük Lego Ağacı', icon: '🌳', parts: ['🪵 Gövde', '🪵 Dallar', '🍃 Yapraklar', '🌿 Tepe Tacı', '🍎 Elmalar'] },
+      { id: 1, key: 'house', title: '🏠 EV', name: 'Sıcak Lego Evi', icon: '🏠', parts: ['🧱 Temel Duvar', '🚪 Kapı', '🪟 Pencereler', '🏠 Çatı', '☁️ Baca & Duman'] },
+      { id: 2, key: 'computer', title: '💻 BİLGİSAYAR', name: 'Lego Bilgisayarı', icon: '💻', parts: ['🖥️ Kasa & Stand', '💻 Monitör Ekranı', '⌨️ Renkli Klavye', '🖱️ Lego Faresi', '🔊 Hoparlör & Güç'] }
+    ];
+
+    const LEVELS = [
+      // --- DÜNYA 1: LEGO AĞACI (1 - 5) ---
+      {
+        id: 1, worldIndex: 0, title: "Bölüm 1: Ağacın Kökü 🪵", description: "2 adet kahverengi gövde parçasını topla ve hedefe taşı!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "trunk", partName: "Gövde Parçası", partIcon: "🪵",
+        bricks: [{ x: 0, y: 2, type: 'trunk' }, { x: 2, y: 2, type: 'trunk' }],
+        obstacles: [{ x: 1, y: 3 }], goal: { x: 2, y: 0 }
+      },
+      {
+        id: 2, worldIndex: 0, title: "Bölüm 2: Güçlü Dallar 🌿", description: "Gövdeye takılacak 2 adet sağlam dal tuğlasını topla!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "branch", partName: "Açılı Dal Parçası", partIcon: "🪵",
+        bricks: [{ x: 2, y: 4, type: 'branch' }, { x: 4, y: 2, type: 'branch' }],
+        obstacles: [{ x: 1, y: 2 }, { x: 3, y: 3 }], goal: { x: 4, y: 0 }
+      },
+      {
+        id: 3, worldIndex: 0, title: "Bölüm 3: Geniş Yapraklar 🍃", description: "3 adet geniş yeşil Lego yaprak plakasını bulup topla!",
+        gridSize: 5, startPos: { x: 0, y: 0 }, partType: "leaf_base", partName: "Geniş Yaprak Plakası", partIcon: "🍃",
+        bricks: [{ x: 2, y: 0, type: 'leaf_base' }, { x: 2, y: 2, type: 'leaf_base' }, { x: 4, y: 2, type: 'leaf_base' }],
+        obstacles: [{ x: 1, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 3 }], goal: { x: 4, y: 4 }
+      },
+      {
+        id: 4, worldIndex: 0, title: "Bölüm 4: Zirve Yaprak Tacı 🌲", description: "Ağacın en tepesini oluşturacak açık yeşil yaprakları topla!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "leaf_top", partName: "Zirve Yaprak Tacı", partIcon: "🌿",
+        bricks: [{ x: 1, y: 4, type: 'leaf_top' }, { x: 1, y: 2, type: 'leaf_top' }, { x: 3, y: 2, type: 'leaf_top' }],
+        obstacles: [{ x: 0, y: 2 }, { x: 2, y: 3 }, { x: 2, y: 1 }], goal: { x: 4, y: 0 }
+      },
+      {
+        id: 5, worldIndex: 0, title: "Bölüm 5: Kırmızı Elmalar! 🍎", description: "Ağacı süsleyecek parlak kırmızı Lego elmalarını topla!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "apple", partName: "Lego Elması", partIcon: "🍎",
+        bricks: [{ x: 1, y: 3, type: 'apple' }, { x: 3, y: 3, type: 'apple' }, { x: 2, y: 1, type: 'apple' }],
+        obstacles: [{ x: 1, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }], goal: { x: 2, y: 0 }
+      },
+
+      // --- DÜNYA 2: SICAK LEGO EVİ (6 - 10) ---
+      {
+        id: 6, worldIndex: 1, title: "Bölüm 6: Temel Duvar Tuğlaları 🧱", description: "Evin temelini oluşturacak 2 adet sağlam Lego duvar tuğlasını topla!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "house_wall", partName: "Temel Duvar Tuğlası", partIcon: "🧱",
+        bricks: [{ x: 1, y: 3, type: 'house_wall' }, { x: 3, y: 1, type: 'house_wall' }],
+        obstacles: [{ x: 2, y: 3 }, { x: 1, y: 1 }], goal: { x: 4, y: 0 }
+      },
+      {
+        id: 7, worldIndex: 1, title: "Bölüm 7: Kırmızı Lego Kapısı 🚪", description: "Evin açılıp kapanan kırmızı Lego kapısını bulup hedefe taşı!",
+        gridSize: 5, startPos: { x: 4, y: 4 }, partType: "house_door", partName: "Lego Kapısı", partIcon: "🚪",
+        bricks: [{ x: 2, y: 4, type: 'house_door' }, { x: 2, y: 2, type: 'house_door' }],
+        obstacles: [{ x: 3, y: 3 }, { x: 1, y: 3 }], goal: { x: 0, y: 0 }
+      },
+      {
+        id: 8, worldIndex: 1, title: "Bölüm 8: Şeffaf Pencereler 🪟", description: "Evin gün ışığı alması için 2 adet şeffaf camlı Lego penceresini topla!",
+        gridSize: 5, startPos: { x: 0, y: 0 }, partType: "house_window", partName: "Camlı Pencere", partIcon: "🪟",
+        bricks: [{ x: 2, y: 0, type: 'house_window' }, { x: 2, y: 3, type: 'house_window' }],
+        obstacles: [{ x: 1, y: 2 }, { x: 3, y: 2 }], goal: { x: 4, y: 4 }
+      },
+      {
+        id: 9, worldIndex: 1, title: "Bölüm 9: Eğimli Kırmızı Çatı 🏠", description: "Evi yağmurdan koruyacak 2 adet üçgen çatı tuğlasını topla!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "house_roof", partName: "Üçgen Çatı Parçası", partIcon: "🏠",
+        bricks: [{ x: 1, y: 3, type: 'house_roof' }, { x: 3, y: 3, type: 'house_roof' }, { x: 2, y: 1, type: 'house_roof' }],
+        obstacles: [{ x: 2, y: 4 }, { x: 2, y: 2 }], goal: { x: 4, y: 0 }
+      },
+      {
+        id: 10, worldIndex: 1, title: "Bölüm 10: Baca ve Duman Studu ☁️", description: "Evin son parçası olan şömine bacasını ve dumanını topla!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "house_chimney", partName: "Baca ve Duman", partIcon: "☁️",
+        bricks: [{ x: 1, y: 2, type: 'house_chimney' }, { x: 3, y: 2, type: 'house_chimney' }],
+        obstacles: [{ x: 1, y: 3 }, { x: 3, y: 3 }, { x: 2, y: 1 }], goal: { x: 2, y: 0 }
+      },
+
+      // --- DÜNYA 3: LEGO BİLGİSAYARI (11 - 15) ---
+      {
+        id: 11, worldIndex: 2, title: "Bölüm 11: Kasa ve Monitör Standı 🖥️", description: "Bilgisayarın kule kasasını ve monitör ayağını topla!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "comp_case", partName: "Kasa & Stand", partIcon: "🖥️",
+        bricks: [{ x: 1, y: 3, type: 'comp_case' }, { x: 3, y: 1, type: 'comp_case' }],
+        obstacles: [{ x: 1, y: 2 }, { x: 3, y: 2 }], goal: { x: 4, y: 0 }
+      },
+      {
+        id: 12, worldIndex: 2, title: "Bölüm 12: Geniş Monitör Ekranı 💻", description: "Oyun ve kod yazacağımız geniş Lego monitör ekranını topla!",
+        gridSize: 5, startPos: { x: 4, y: 4 }, partType: "comp_monitor", partName: "Monitör Ekranı", partIcon: "💻",
+        bricks: [{ x: 2, y: 4, type: 'comp_monitor' }, { x: 2, y: 1, type: 'comp_monitor' }],
+        obstacles: [{ x: 3, y: 2 }, { x: 1, y: 2 }], goal: { x: 0, y: 0 }
+      },
+      {
+        id: 13, worldIndex: 2, title: "Bölüm 13: Renkli Tuşlu Klavye ⌨️", description: "Algoritmaları yazacağımız renkli tuşlu klavye parçasını bul!",
+        gridSize: 5, startPos: { x: 0, y: 0 }, partType: "comp_keyboard", partName: "Lego Klavyesi", partIcon: "⌨️",
+        bricks: [{ x: 2, y: 0, type: 'comp_keyboard' }, { x: 4, y: 2, type: 'comp_keyboard' }, { x: 2, y: 4, type: 'comp_keyboard' }],
+        obstacles: [{ x: 1, y: 1 }, { x: 3, y: 1 }, { x: 3, y: 3 }], goal: { x: 4, y: 4 }
+      },
+      {
+        id: 14, worldIndex: 2, title: "Bölüm 14: Ergonomik Lego Faresi 🖱️", description: "Hızlı hareket etmek için kablolu Lego faresini topla!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "comp_mouse", partName: "Lego Faresi", partIcon: "🖱️",
+        bricks: [{ x: 2, y: 3, type: 'comp_mouse' }, { x: 2, y: 1, type: 'comp_mouse' }],
+        obstacles: [{ x: 1, y: 2 }, { x: 3, y: 2 }, { x: 0, y: 2 }], goal: { x: 4, y: 0 }
+      },
+      {
+        id: 15, worldIndex: 2, title: "Bölüm 15: Hoparlörler & Güç Düğmesi 🔊", description: "Müzik ve ses için hoparlörleri ve ışıklı güç düğmesini topla!",
+        gridSize: 5, startPos: { x: 0, y: 4 }, partType: "comp_speaker", partName: "Hoparlör & Güç", partIcon: "🔊",
+        bricks: [{ x: 1, y: 3, type: 'comp_speaker' }, { x: 3, y: 3, type: 'comp_speaker' }, { x: 2, y: 1, type: 'comp_speaker' }],
+        obstacles: [{ x: 1, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }], goal: { x: 2, y: 0 }
+      }
+    ];
+
+    let currentLevelIndex = 0;
+    let playerPos = { x: 0, y: 0 };
+    let collectedBricks = 0;
+    let commands = [];
+    let isExecuting = false;
+    let activeLevelBricks = [];
+    let completedLevels = new Array(15).fill(false);
+
+    // İnşaat Modu Değişkenleri
+    let isBuildMode = false;
+    let currentBuildStep = 0;
+    let buildAssemblyGroup = null;
+
+    /* ==========================================================================
+       4. THREE.JS 3D SAHNE & AYARLARI
+       ========================================================================== */
+    let scene, camera, renderer, controls;
+    let baseplateGroup, boardGroup, characterGroup, itemsGroup, obstaclesGroup, goalGroup;
+    let characterMesh = null;
+    let isTopDownCamera = false;
+    let isCameraMoving = true;
+    let targetCameraPos = new THREE.Vector3();
+    let targetCameraLook = new THREE.Vector3(0, 0.5, 2.0);
+
+    function createLegoMaterial(colorHex, options = {}) {
+      return new THREE.MeshPhysicalMaterial({
+        color: colorHex,
+        roughness: options.roughness !== undefined ? options.roughness : 0.22,
+        metalness: 0.03,
+        clearcoat: 0.45,
+        clearcoatRoughness: 0.15,
+        reflectivity: 0.5,
+        ...options
+      });
+    }
+
+    const LEGO_COLORS = {
+      baseplateGreen: 0x388e3c,
+      baseplateGrid: 0x4caf50,
+      yellowStud: 0xfacc15,
+      legoYellow: 0xfacc15,
+      legoBlue: 0x0284c7,
+      legoRed: 0xef4444,
+      legoWhite: 0xf8fafc,
+      legoDarkGray: 0x334155,
+      legoLightGray: 0x94a3b8,
+      legoBlack: 0x0f172a,
+      brownWood: 0x582a12,
+      lightBrown: 0x824d27,
+      darkGreen: 0x1b5e20,
+      brightGreen: 0x4caf50,
+      limeGreen: 0x76c828,
+      appleRed: 0xdd1111,
+      goalGold: 0xf59e0b,
+      transBlue: 0x38bdf8
+    };
+
+    function init3DScene() {
+      const container = document.getElementById('threeCanvas');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xbbf2f6);
+      scene.fog = new THREE.FogExp2(0xbbf2f6, 0.02);
+
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+      setCameraIsometric();
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.maxPolarAngle = Math.PI / 2.05;
+      controls.minDistance = 7;
+      controls.maxDistance = 26;
+      controls.target.set(0, 0.5, 2.0);
+
+      controls.addEventListener('start', () => {
+        isCameraMoving = false;
+      });
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+      scene.add(ambientLight);
+
+      const sunLight = new THREE.DirectionalLight(0xfff7ed, 1.2);
+      sunLight.position.set(12, 24, 14);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 2048;
+      sunLight.shadow.mapSize.height = 2048;
+      sunLight.shadow.bias = -0.0005;
+      scene.add(sunLight);
+
+      const fillLight = new THREE.DirectionalLight(0xbae6fd, 0.45);
+      fillLight.position.set(-10, 15, -12);
+      scene.add(fillLight);
+
+      baseplateGroup = new THREE.Group();
+      scene.add(baseplateGroup);
+
+      boardGroup = new THREE.Group();
+      scene.add(boardGroup);
+
+      obstaclesGroup = new THREE.Group();
+      scene.add(obstaclesGroup);
+
+      itemsGroup = new THREE.Group();
+      scene.add(itemsGroup);
+
+      goalGroup = new THREE.Group();
+      scene.add(goalGroup);
+
+      characterGroup = new THREE.Group();
+      scene.add(characterGroup);
+
+      buildBaseWorld();
+      window.addEventListener('resize', onWindowResize);
+      animate();
+    }
+
+    function setCameraIsometric() {
+      isTopDownCamera = false;
+      const btn = document.getElementById('cameraToggleBtn');
+      if (btn) btn.innerHTML = "<span>🎥</span> <span>3D</span>";
+      targetCameraPos.set(0, 17.5, 18.5);
+      targetCameraLook.set(0, 0.2, 1.5);
+      isCameraMoving = true;
+    }
+
+    function setCameraTopDown() {
+      isTopDownCamera = true;
+      const btn = document.getElementById('cameraToggleBtn');
+      if (btn) btn.innerHTML = "<span>🔝</span> <span>Kuşbakışı</span>";
+      targetCameraPos.set(0, 22.5, 2.0);
+      targetCameraLook.set(0, 0, 2.0);
+      isCameraMoving = true;
+    }
+
+    function toggleCameraView() {
+      playSound('click');
+      if (isTopDownCamera) {
+        setCameraIsometric();
+      } else {
+        setCameraTopDown();
+      }
+    }
+
+    function rotateView() {
+      playSound('click');
+      const angle = Math.PI / 4;
+      const relX = camera.position.x - targetCameraLook.x;
+      const relZ = camera.position.z - targetCameraLook.z;
+      const newRelX = relX * Math.cos(angle) - relZ * Math.sin(angle);
+      const newRelZ = relX * Math.sin(angle) + relZ * Math.cos(angle);
+      targetCameraPos.set(targetCameraLook.x + newRelX, camera.position.y, targetCameraLook.z + newRelZ);
+      isCameraMoving = true;
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    /* ==========================================================================
+       5. GERÇEKÇİ LEGO TUĞLALARI & MODELLER (AĞAÇ, EV, BİLGİSAYAR)
+       ========================================================================== */
+    const studGeometry = new THREE.CylinderGeometry(0.24, 0.24, 0.14, 18);
+    studGeometry.translate(0, 0.07, 0);
+
+    function createBeveledBrickMesh(w, h, d, colorHex, bevel = 0.035, options = {}) {
+      const shape = new THREE.Shape();
+      const hw = w / 2 - bevel;
+      const hd = d / 2 - bevel;
+      shape.moveTo(-hw, -hd);
+      shape.lineTo(hw, -hd);
+      shape.lineTo(hw, hd);
+      shape.lineTo(-hw, hd);
+      shape.closePath();
+
+      const extrudeSettings = {
+        depth: h - bevel * 2,
+        bevelEnabled: true,
+        bevelSegments: 2,
+        steps: 1,
+        bevelSize: bevel,
+        bevelThickness: bevel
+      };
+
+      const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      geom.center();
+      geom.rotateX(Math.PI / 2);
+
+      const mat = createLegoMaterial(colorHex, options);
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function createStandardLegoBrick(studsX, studsZ, heightUnits, colorHex, options = {}) {
+      const group = new THREE.Group();
+      const brickWidth = studsX * 0.8;
+      const brickDepth = studsZ * 0.8;
+      const brickHeight = heightUnits * 0.96;
+
+      const body = createBeveledBrickMesh(brickWidth, brickHeight, brickDepth, colorHex, 0.035, options);
+      body.position.y = brickHeight / 2;
+      group.add(body);
+
+      const studMat = createLegoMaterial(colorHex, options);
+      const startX = -((studsX - 1) * 0.8) / 2;
+      const startZ = -((studsZ - 1) * 0.8) / 2;
+
+      for (let ix = 0; ix < studsX; ix++) {
+        for (let iz = 0; iz < studsZ; iz++) {
+          const stud = new THREE.Mesh(studGeometry, studMat);
+          stud.position.set(startX + ix * 0.8, brickHeight, startZ + iz * 0.8);
+          stud.castShadow = true;
+          stud.receiveShadow = true;
+          group.add(stud);
+        }
+      }
+      return group;
+    }
+
+    // --- AĞAÇ PARÇALARI ---
+    function create3DTrunkPiece() {
+      const group = new THREE.Group();
+      const mat = createLegoMaterial(LEGO_COLORS.brownWood);
+      const cylMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.72, 1.1, 24), mat);
+      cylMesh.position.y = 0.55;
+      cylMesh.castShadow = true;
+      group.add(cylMesh);
+
+      [[-0.32, -0.32], [0.32, -0.32], [-0.32, 0.32], [0.32, 0.32]].forEach(([sx, sz]) => {
+        const s = new THREE.Mesh(studGeometry, mat);
+        s.position.set(sx, 1.1, sz);
+        group.add(s);
+      });
+      return group;
+    }
+
+    function create3DBranchPiece() {
+      const group = new THREE.Group();
+      const b1 = createBeveledBrickMesh(0.75, 0.5, 0.75, LEGO_COLORS.brownWood);
+      b1.position.y = 0.25;
+      group.add(b1);
+
+      const branchArm = createBeveledBrickMesh(0.5, 0.4, 1.1, LEGO_COLORS.brownWood);
+      branchArm.position.set(0, 0.45, 0.4);
+      branchArm.rotation.x = -Math.PI / 6;
+      group.add(branchArm);
+
+      const leafStud = new THREE.Mesh(studGeometry, createLegoMaterial(LEGO_COLORS.brightGreen));
+      leafStud.position.set(0, 0.75, 0.85);
+      group.add(leafStud);
+      return group;
+    }
+
+    function create3DLeafBasePiece() {
+      const group = new THREE.Group();
+      const leafMat = createLegoMaterial(LEGO_COLORS.darkGreen);
+      const studMat = createLegoMaterial(LEGO_COLORS.brightGreen);
+
+      const centerMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.25, 20), leafMat);
+      centerMesh.position.y = 0.125;
+      group.add(centerMesh);
+
+      [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3].forEach((ang) => {
+        const lobe = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.25, 16), leafMat);
+        lobe.position.set(Math.cos(ang) * 0.75, 0.125, Math.sin(ang) * 0.75);
+        group.add(lobe);
+
+        const s = new THREE.Mesh(studGeometry, studMat);
+        s.position.set(Math.cos(ang) * 0.75, 0.25, Math.sin(ang) * 0.75);
+        group.add(s);
+      });
+      return group;
+    }
+
+    function create3DLeafTopPiece() {
+      const group = new THREE.Group();
+      const domeMesh = new THREE.Mesh(new THREE.SphereGeometry(0.85, 20, 14, 0, Math.PI * 2, 0, Math.PI / 2), createLegoMaterial(LEGO_COLORS.limeGreen));
+      domeMesh.position.y = 0.2;
+      group.add(domeMesh);
+
+      const s = new THREE.Mesh(studGeometry, createLegoMaterial(LEGO_COLORS.limeGreen));
+      s.position.set(0, 1.05, 0);
+      group.add(s);
+      return group;
+    }
+
+    function create3DApplePiece() {
+      const group = new THREE.Group();
+      const appleMesh = new THREE.Mesh(new THREE.SphereGeometry(0.48, 20, 16), createLegoMaterial(LEGO_COLORS.appleRed, { roughness: 0.15, clearcoat: 0.8 }));
+      appleMesh.position.y = 0.5;
+      group.add(appleMesh);
+
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.28, 10), createLegoMaterial(LEGO_COLORS.darkGreen));
+      stem.position.set(0, 0.98, 0);
+      group.add(stem);
+      return group;
+    }
+
+    // --- EV PARÇALARI ---
+    function create3DHouseWallPiece() {
+      // Klasik 2x2 Mavi Duvar Tuğlası
+      return createStandardLegoBrick(2, 2, 1.0, LEGO_COLORS.legoBlue);
+    }
+
+    function create3DHouseDoorPiece() {
+      const group = new THREE.Group();
+      // Beyaz Kapı Kasası (Kompakt Lego Boyutu)
+      const frame = createBeveledBrickMesh(1.1, 1.6, 0.35, LEGO_COLORS.legoWhite);
+      frame.position.y = 0.8;
+      group.add(frame);
+
+      // Kırmızı Lego Kapısı
+      const door = createBeveledBrickMesh(0.8, 1.35, 0.18, LEGO_COLORS.legoRed);
+      door.position.set(0, 0.75, 0.05);
+      group.add(door);
+
+      // Sarı Kapı Kolu Studu
+      const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.1, 12), createLegoMaterial(LEGO_COLORS.legoYellow));
+      knob.rotation.x = Math.PI / 2;
+      knob.position.set(0.28, 0.75, 0.16);
+      group.add(knob);
+      return group;
+    }
+
+    function create3DHouseWindowPiece() {
+      const group = new THREE.Group();
+      // Beyaz Pencere Kasası
+      const frame = createBeveledBrickMesh(1.1, 1.1, 0.3, LEGO_COLORS.legoWhite);
+      frame.position.y = 0.55;
+      group.add(frame);
+
+      // Şeffaf Mavi Cam
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.08), createLegoMaterial(LEGO_COLORS.transBlue, { transparent: true, opacity: 0.65, roughness: 0.1 }));
+      glass.position.set(0, 0.55, 0);
+      group.add(glass);
+      return group;
+    }
+
+    function create3DHouseRoofPiece() {
+      const group = new THREE.Group();
+      // 45 Derece Eğimli Kırmızı Çatı Tuğlası
+      const roofShape = new THREE.Shape();
+      roofShape.moveTo(-0.7, 0);
+      roofShape.lineTo(0.7, 0);
+      roofShape.lineTo(0, 0.7);
+      roofShape.closePath();
+
+      const extrudeSettings = { depth: 1.2, bevelEnabled: true, bevelSize: 0.025, bevelThickness: 0.025 };
+      const geom = new THREE.ExtrudeGeometry(roofShape, extrudeSettings);
+      geom.center();
+      const roofMesh = new THREE.Mesh(geom, createLegoMaterial(LEGO_COLORS.legoRed));
+      roofMesh.position.y = 0.45;
+      roofMesh.castShadow = true;
+      group.add(roofMesh);
+      return group;
+    }
+
+    function create3DHouseChimneyPiece() {
+      const group = new THREE.Group();
+      // Gri Baca
+      const chimney = createBeveledBrickMesh(0.65, 1.1, 0.65, LEGO_COLORS.legoDarkGray);
+      chimney.position.y = 0.55;
+      group.add(chimney);
+
+      // Beyaz Duman Bulutu Studu
+      const smokePuff = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), createLegoMaterial(LEGO_COLORS.legoWhite));
+      smokePuff.position.set(0, 1.25, 0);
+      group.add(smokePuff);
+      return group;
+    }
+
+    // --- BİLGİSAYAR PARÇALARI ---
+    function create3DCompCasePiece() {
+      const group = new THREE.Group();
+      // Siyah Masaüstü Kule Kasası
+      const pcCase = createBeveledBrickMesh(0.8, 1.8, 1.5, LEGO_COLORS.legoDarkGray);
+      pcCase.position.y = 0.9;
+      group.add(pcCase);
+
+      // Parlak Işıklı Güç Düğmesi
+      const powerDot = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12), createLegoMaterial(LEGO_COLORS.brightGreen));
+      powerDot.rotation.x = Math.PI / 2;
+      powerDot.position.set(0, 1.4, 0.78);
+      group.add(powerDot);
+      return group;
+    }
+
+    function create3DCompMonitorPiece() {
+      const group = new THREE.Group();
+      // Monitör Ayağı
+      const stand = createBeveledBrickMesh(0.6, 0.8, 0.6, LEGO_COLORS.legoLightGray);
+      stand.position.y = 0.4;
+      group.add(stand);
+
+      // Geniş Ekran Çerçevesi
+      const frame = createBeveledBrickMesh(2.2, 1.4, 0.25, LEGO_COLORS.legoBlack);
+      frame.position.set(0, 1.4, 0);
+      group.add(frame);
+
+      // Mavi Ekran
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.1), createLegoMaterial(0x0284c7, { roughness: 0.1 }));
+      screen.position.set(0, 1.4, 0.14);
+      group.add(screen);
+      return group;
+    }
+
+    function create3DCompKeyboardPiece() {
+      const group = new THREE.Group();
+      // Klavye Gövdesi
+      const base = createBeveledBrickMesh(1.8, 0.18, 0.8, LEGO_COLORS.legoDarkGray);
+      base.position.y = 0.09;
+      base.rotation.x = 0.1;
+      group.add(base);
+
+      // Renkli Tuş Studları
+      const keyColors = [0xef4444, 0xfacc15, 0x10b981, 0x3b82f6];
+      for (let i = 0; i < 4; i++) {
+        const key = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), createLegoMaterial(keyColors[i]));
+        key.position.set(-0.6 + i * 0.4, 0.22, 0);
+        group.add(key);
+      }
+      return group;
+    }
+
+    function create3DCompMousePiece() {
+      const group = new THREE.Group();
+      // Lego Faresi (Kavisli)
+      const mouse = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), createLegoMaterial(LEGO_COLORS.legoLightGray));
+      mouse.scale.set(0.8, 0.5, 1.3);
+      mouse.position.y = 0.16;
+      group.add(mouse);
+
+      // Kırmızı Tıklama Butonu
+      const btn = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.2), createLegoMaterial(LEGO_COLORS.legoRed));
+      btn.position.set(0, 0.28, -0.15);
+      group.add(btn);
+      return group;
+    }
+
+    function create3DCompSpeakerPiece() {
+      const group = new THREE.Group();
+      // Çift Masaüstü Hoparlörü
+      [-0.45, 0.45].forEach(ox => {
+        const spk = createBeveledBrickMesh(0.5, 1.0, 0.5, LEGO_COLORS.legoBlack);
+        spk.position.set(ox, 0.5, 0);
+        group.add(spk);
+
+        const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.05, 12), createLegoMaterial(LEGO_COLORS.legoYellow));
+        cone.rotation.x = Math.PI / 2;
+        cone.position.set(ox, 0.6, 0.27);
+        group.add(cone);
+      });
+      return group;
+    }
+
+    // Kaya / Engel Modeli
+    function create3DRockObstacle() {
+      const group = new THREE.Group();
+      const b1 = createBeveledBrickMesh(1.3, 0.7, 1.3, 0x475569, 0.05);
+      b1.position.y = 0.35;
+      group.add(b1);
+
+      const b2 = createBeveledBrickMesh(0.85, 0.6, 0.85, 0x64748b, 0.05);
+      b2.position.set(0.1, 0.85, 0.05);
+      b2.rotation.y = Math.PI / 5;
+      group.add(b2);
+      return group;
+    }
+
+    let finishTexture = null;
+    function getFinishTexture() {
+      if (!finishTexture) {
+        const loader = new THREE.TextureLoader();
+        const src = (typeof FINISH_SIGN_B64 !== 'undefined' && FINISH_SIGN_B64) ? FINISH_SIGN_B64 : './finish_sign.png';
+        finishTexture = loader.load(src);
+      }
+      return finishTexture;
+    }
+
+    // Finish Noktası Tabelası (Kullanıcının Yüklediği Ahşap Finish Tabelası - Büyütülmüş)
+    function create3DFinishSign() {
+      const group = new THREE.Group();
+
+      // 1. Lego Çim Taban Studu
+      const baseStud = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.34, 0.38, 0.05, 20),
+        createLegoMaterial(0x16a34a, { roughness: 0.35 })
+      );
+      baseStud.position.y = 0.025;
+      baseStud.receiveShadow = true;
+      group.add(baseStud);
+
+      // 2. Finish Tabelası Sprite'ı (Her açıdan kameraya bakan, büyük & net ahşap Finish oku)
+      const texture = getFinishTexture();
+      const spriteMat = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false
+      });
+      const sprite = new THREE.Sprite(spriteMat);
+      // Sprite alt merkezi çim tabanına otursun
+      sprite.center.set(0.5, 0.0);
+      sprite.scale.set(1.5, 1.5, 1.0);
+      sprite.position.set(0, 0.04, 0);
+      group.add(sprite);
+
+      group.userData.finishSprite = sprite;
+      return group;
+    }
+
+    const create3DGoalFlag = create3DFinishSign;
+
+    /* ==========================================================================
+       6. 3D LEGO MİNİFİGÜR OLUŞTURUCU
+       ========================================================================== */
+    function createMinifigureMesh(heroKey) {
+      const hero = HEROES[heroKey] || HEROES.leo;
+      const group = new THREE.Group();
+      const skinMat = createLegoMaterial(LEGO_COLORS.legoYellow);
+      const torsoMat = createLegoMaterial(hero.torsoColor);
+      const legsMat = createLegoMaterial(hero.legsColor);
+      const hatMat = createLegoMaterial(hero.hatColor);
+
+      // Kafa
+      const headMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.44, 20), skinMat);
+      headMesh.position.y = 1.45;
+      headMesh.castShadow = true;
+
+      const headStud = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 16), skinMat);
+      headStud.position.y = 0.28;
+      headMesh.add(headStud);
+
+      // Yüz Çıkartması
+      const faceCanvas = document.createElement('canvas');
+      faceCanvas.width = 256; faceCanvas.height = 256;
+      const fctx = faceCanvas.getContext('2d');
+      fctx.fillStyle = '#facc15'; fctx.fillRect(0, 0, 256, 256);
+      fctx.fillStyle = '#1e293b';
+      fctx.beginPath(); fctx.arc(85, 110, 14, 0, Math.PI * 2); fctx.arc(171, 110, 14, 0, Math.PI * 2); fctx.fill();
+      fctx.fillStyle = '#ffffff';
+      fctx.beginPath(); fctx.arc(82, 105, 5, 0, Math.PI * 2); fctx.arc(168, 105, 5, 0, Math.PI * 2); fctx.fill();
+      fctx.strokeStyle = '#1e293b'; fctx.lineWidth = 8; fctx.lineCap = 'round';
+      fctx.beginPath(); fctx.arc(128, 135, 32, 0.18 * Math.PI, 0.82 * Math.PI, false); fctx.stroke();
+
+      const facePlane = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.44), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(faceCanvas), transparent: true }));
+      facePlane.position.set(0, 0, 0.33);
+      headMesh.add(facePlane);
+      group.add(headMesh);
+
+      // Şapka
+      if (hero.hatType === 'cap') {
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2), hatMat);
+        cap.position.y = 0.18; headMesh.add(cap);
+        const visor = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.32), hatMat);
+        visor.position.set(0, 0.18, 0.36); visor.rotation.x = 0.15; headMesh.add(visor);
+      } else if (hero.hatType === 'hair') {
+        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.37, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2), hatMat);
+        hair.position.y = 0.18; headMesh.add(hair);
+      } else if (hero.hatType === 'safari') {
+        const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.56, 0.06, 20), hatMat);
+        brim.position.y = 0.18; headMesh.add(brim);
+      } else if (hero.hatType === 'helmet') {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.44, 0.65, 16), hatMat);
+        cone.position.y = 0.5; headMesh.add(cone);
+      }
+
+      // Torso
+      const torsoGeom = new THREE.CylinderGeometry(0.38, 0.48, 0.65, 4);
+      torsoGeom.rotateY(Math.PI / 4);
+      const torsoMesh = new THREE.Mesh(torsoGeom, torsoMat);
+      torsoMesh.position.y = 0.88; torsoMesh.scale.set(1.15, 1, 0.72);
+      group.add(torsoMesh);
+
+      // Kollar & Eller
+      const armGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.42, 12);
+      const handGeom = new THREE.TorusGeometry(0.1, 0.045, 8, 16, Math.PI * 1.5);
+
+      const leftArmGroup = new THREE.Group();
+      leftArmGroup.position.set(-0.46, 1.1, 0);
+      const leftArm = new THREE.Mesh(armGeom, torsoMat); leftArm.position.y = -0.2; leftArm.rotation.z = 0.22; leftArmGroup.add(leftArm);
+      const leftHand = new THREE.Mesh(handGeom, skinMat); leftHand.position.set(-0.06, -0.42, 0); leftHand.rotation.x = Math.PI / 2; leftArmGroup.add(leftHand);
+      group.add(leftArmGroup);
+
+      const rightArmGroup = new THREE.Group();
+      rightArmGroup.position.set(0.46, 1.1, 0);
+      const rightArm = new THREE.Mesh(armGeom, torsoMat); rightArm.position.y = -0.2; rightArm.rotation.z = -0.22; rightArmGroup.add(rightArm);
+      const rightHand = new THREE.Mesh(handGeom, skinMat); rightHand.position.set(0.06, -0.42, 0); rightHand.rotation.x = Math.PI / 2; rightArmGroup.add(rightHand);
+      group.add(rightArmGroup);
+
+      // Kalça & Bacaklar
+      const hipMesh = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.16, 0.38), legsMat);
+      hipMesh.position.y = 0.48; group.add(hipMesh);
+
+      const leftLegGroup = new THREE.Group();
+      leftLegGroup.position.set(-0.18, 0.42, 0);
+      const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.46, 0.36), legsMat); leftLeg.position.y = -0.23; leftLegGroup.add(leftLeg);
+      group.add(leftLegGroup);
+
+      const rightLegGroup = new THREE.Group();
+      rightLegGroup.position.set(0.18, 0.42, 0);
+      const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.46, 0.36), legsMat); rightLeg.position.y = -0.23; rightLegGroup.add(rightLeg);
+      group.add(rightLegGroup);
+
+      group.userData = { leftArm: leftArmGroup, rightArm: rightArmGroup, leftLeg: leftLegGroup, rightLeg: rightLegGroup, head: headMesh };
+      return group;
+    }
+
+    /* ==========================================================================
+       7. DÜNYA VE 5x5 LEGO IZGARA ZEMİNİNİN KURULUMU
+       ========================================================================== */
+    const CELL_SIZE = 2.0;
+
+    function gridToWorld(gx, gy) {
+      const wx = (gx - 2) * CELL_SIZE;
+      const wz = (gy - 2) * CELL_SIZE;
+      return { x: wx, z: wz };
+    }
+
+    function buildBaseWorld() {
+      const baseplateWidth = 5 * CELL_SIZE + 1.2;
+      const baseMesh = createBeveledBrickMesh(baseplateWidth, 0.4, baseplateWidth, LEGO_COLORS.baseplateGreen, 0.08);
+      baseMesh.position.y = -0.2;
+      baseMesh.receiveShadow = true;
+      baseplateGroup.add(baseMesh);
+
+      const borderMesh = createBeveledBrickMesh(baseplateWidth + 1.2, 0.2, baseplateWidth + 1.2, 0x1e3a8a, 0.1);
+      borderMesh.position.y = -0.4;
+      borderMesh.receiveShadow = true;
+      baseplateGroup.add(borderMesh);
+    }
+
+    function buildLevelBoard() {
+      while (boardGroup.children.length > 0) {
+        boardGroup.remove(boardGroup.children[0]);
+      }
+
+      const lvl = LEVELS[currentLevelIndex];
+      const studMat1 = createLegoMaterial(0x84cc16);
+      const studMat2 = createLegoMaterial(0x65a30d);
+
+      for (let y = 0; y < lvl.gridSize; y++) {
+        for (let x = 0; x < lvl.gridSize; x++) {
+          const wpos = gridToWorld(x, y);
+          const isEven = (x + y) % 2 === 0;
+
+          const tileMat = createLegoMaterial(isEven ? 0x84cc16 : 0x78bc12);
+          const tileMesh = new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE - 0.08, 0.1, CELL_SIZE - 0.08), tileMat);
+          tileMesh.position.set(wpos.x, 0.05, wpos.z);
+          tileMesh.receiveShadow = true;
+          boardGroup.add(tileMesh);
+
+          const smat = isEven ? studMat1 : studMat2;
+          [-0.48, 0.48].forEach(ox => {
+            [-0.48, 0.48].forEach(oz => {
+              const stud = new THREE.Mesh(studGeometry, smat);
+              stud.position.set(wpos.x + ox, 0.1, wpos.z + oz);
+              stud.receiveShadow = true;
+              boardGroup.add(stud);
+            });
+          });
+        }
+      }
+    }
+
+    /* ==========================================================================
+       8. SEVİYE YÜKLEME, NESNELER & OYUNCU POZİSYONLAMA
+       ========================================================================== */
+    function loadLevel(index) {
+      isBuildMode = false;
+      document.getElementById('codingFooter').classList.remove('hidden');
+      document.getElementById('buildModeFooter').classList.add('hidden');
+
+      if (buildAssemblyGroup) {
+        scene.remove(buildAssemblyGroup);
+        buildAssemblyGroup = null;
+      }
+
+      currentLevelIndex = index;
+      const lvl = LEVELS[currentLevelIndex];
+      const currentWorld = WORLDS[lvl.worldIndex];
+
+      playerPos = { ...lvl.startPos };
+      activeLevelBricks = JSON.parse(JSON.stringify(lvl.bricks));
+      collectedBricks = 0;
+      commands = [];
+
+      document.getElementById('worldBadge').innerText = currentWorld.title;
+      document.getElementById('levelBadge').innerText = `${lvl.id} / ${LEVELS.length}`;
+      document.getElementById('levelTargetTitle').innerText = lvl.title;
+      document.getElementById('instructionText').innerText = lvl.description;
+
+      updateTreePartsHeader();
+      updateBrickCounter();
+      clearErrorHighlights();
+      updateCommandTray();
+
+      buildLevelBoard();
+      spawnObstacles();
+      spawnGoal();
+      spawnItems();
+      spawnPlayer();
+
+      if (!isTopDownCamera) {
+        setCameraIsometric();
+      }
+    }
+
+    function spawnPlayer() {
+      if (characterMesh) {
+        characterGroup.remove(characterMesh);
+      }
+      characterMesh = createMinifigureMesh(selectedHeroKey);
+      const wpos = gridToWorld(playerPos.x, playerPos.y);
+      characterMesh.position.set(wpos.x, 0.1, wpos.z);
+      characterMesh.rotation.y = Math.PI;
+      characterGroup.add(characterMesh);
+    }
+
+    function spawnObstacles() {
+      while (obstaclesGroup.children.length > 0) {
+        obstaclesGroup.remove(obstaclesGroup.children[0]);
+      }
+      const lvl = LEVELS[currentLevelIndex];
+      lvl.obstacles.forEach(obs => {
+        const rock = create3DRockObstacle();
+        const wpos = gridToWorld(obs.x, obs.y);
+        rock.scale.set(0.72, 0.72, 0.72);
+        rock.position.set(wpos.x, 0.08, wpos.z);
+        obstaclesGroup.add(rock);
+      });
+    }
+
+    function spawnGoal() {
+      while (goalGroup.children.length > 0) {
+        goalGroup.remove(goalGroup.children[0]);
+      }
+      const lvl = LEVELS[currentLevelIndex];
+      const goal = create3DFinishSign();
+      const wpos = gridToWorld(lvl.goal.x, lvl.goal.y);
+      goal.position.set(wpos.x, 0.08, wpos.z);
+      goalGroup.add(goal);
+    }
+
+    function createPieceMeshByType(type) {
+      switch (type) {
+        // Ağaç
+        case 'trunk': return create3DTrunkPiece();
+        case 'branch': return create3DBranchPiece();
+        case 'leaf_base': return create3DLeafBasePiece();
+        case 'leaf_top': return create3DLeafTopPiece();
+        case 'apple': return create3DApplePiece();
+        // Ev
+        case 'house_wall': return create3DHouseWallPiece();
+        case 'house_door': return create3DHouseDoorPiece();
+        case 'house_window': return create3DHouseWindowPiece();
+        case 'house_roof': return create3DHouseRoofPiece();
+        case 'house_chimney': return create3DHouseChimneyPiece();
+        // Bilgisayar
+        case 'comp_case': return create3DCompCasePiece();
+        case 'comp_monitor': return create3DCompMonitorPiece();
+        case 'comp_keyboard': return create3DCompKeyboardPiece();
+        case 'comp_mouse': return create3DCompMousePiece();
+        case 'comp_speaker': return create3DCompSpeakerPiece();
+        default: return create3DTrunkPiece();
+      }
+    }
+
+    function spawnItems() {
+      while (itemsGroup.children.length > 0) {
+        itemsGroup.remove(itemsGroup.children[0]);
+      }
+
+      activeLevelBricks.forEach(b => {
+        const piece = createPieceMeshByType(b.type);
+        const wpos = gridToWorld(b.x, b.y);
+        // Toplanabilir Legoları biraz daha küçük ve hücreye uygun yap (0.65 ölçek)
+        piece.scale.set(0.65, 0.65, 0.65);
+        piece.position.set(wpos.x, 0.28, wpos.z);
+        piece.userData = {
+          brickRef: b,
+          initialY: 0.28,
+          scaleBase: 0.65,
+          timeOffset: Math.random() * Math.PI * 2
+        };
+        itemsGroup.add(piece);
+      });
+    }
+
+    /* ==========================================================================
+       9. KOMUT SİSTEMİ (ALGORİTMA DİZİSİ)
+       ========================================================================== */
+    function clearErrorHighlights() {
+      document.querySelectorAll('.error-step').forEach(el => el.classList.remove('error-step'));
+      document.querySelectorAll('.step-error-badge').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.active-executing').forEach(el => el.classList.remove('active-executing'));
+    }
+
+    function markStepError(cmdBox, stepIndex) {
+      if (!cmdBox) return;
+      cmdBox.classList.remove('active-executing');
+      cmdBox.classList.add('error-step');
+      const badge = cmdBox.querySelector('.step-error-badge');
+      if (badge) badge.classList.remove('hidden');
+      cmdBox.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+
+    function addCommand(direction) {
+      if (isExecuting || isBuildMode) return;
+      if (commands.length >= 14) {
+        showToast("Maksimum 14 adım ekleyebilirsin!", "⚠️");
+        return;
+      }
+      playSound('click');
+      clearErrorHighlights();
+      commands.push(direction);
+      updateCommandTray();
+    }
+
+    function clearCommands() {
+      if (isExecuting || isBuildMode) return;
+      playSound('click');
+      clearErrorHighlights();
+      commands = [];
+      updateCommandTray();
+      const lvl = LEVELS[currentLevelIndex];
+      playerPos = { ...lvl.startPos };
+      activeLevelBricks = JSON.parse(JSON.stringify(lvl.bricks));
+      collectedBricks = 0;
+      updateBrickCounter();
+      spawnItems();
+      const wpos = gridToWorld(playerPos.x, playerPos.y);
+      if (characterMesh) {
+        characterMesh.position.set(wpos.x, 0.1, wpos.z);
+        characterMesh.rotation.y = Math.PI;
+      }
+    }
+
+    function removeCommandAt(index) {
+      if (isExecuting || isBuildMode) return;
+      playSound('click');
+      clearErrorHighlights();
+      commands.splice(index, 1);
+      updateCommandTray();
+    }
+
+    function moveCommand(fromIndex, toIndex) {
+      if (isExecuting || isBuildMode) return;
+      if (toIndex < 0 || toIndex >= commands.length || fromIndex === toIndex) return;
+      playSound('click');
+      clearErrorHighlights();
+      const moved = commands.splice(fromIndex, 1)[0];
+      commands.splice(toIndex, 0, moved);
+      updateCommandTray();
+    }
+
+    let draggedCmdIdx = null;
+
+    function updateCommandTray() {
+      const tray = document.getElementById('commandTray');
+      tray.innerHTML = '';
+
+      if (commands.length === 0) {
+        tray.innerHTML = `
+          <span id="emptyTrayText" class="text-xs text-slate-400 font-bold mx-auto flex items-center gap-1">
+            👇 Oklara dokunarak adımları sıraya diz! (◀ ▶ veya sürükleyerek sırasını değiştirebilirsin)
+          </span>
+        `;
+        return;
+      }
+
+      commands.forEach((cmd, idx) => {
+        const item = document.createElement('div');
+        item.id = `cmd-${idx}`;
+        item.dataset.index = idx;
+        item.draggable = !isExecuting && !isBuildMode;
+        item.className = 'step-card flex-shrink-0 w-[54px] h-[60px] sm:w-[58px] sm:h-[64px] bg-white rounded-2xl shadow-md border-2 border-slate-300 flex flex-col items-center justify-between p-1 relative cursor-grab active:cursor-grabbing select-none';
+
+        let icon = '➡️';
+        let bgStyle = 'bg-amber-100 text-amber-900 border-amber-300';
+
+        if (cmd === 'up') {
+          icon = '⬆️'; bgStyle = 'bg-blue-100 text-blue-900 border-blue-300';
+        } else if (cmd === 'down') {
+          icon = '⬇️'; bgStyle = 'bg-blue-100 text-blue-900 border-blue-300';
+        } else if (cmd === 'left') {
+          icon = '⬅️'; bgStyle = 'bg-amber-100 text-amber-900 border-amber-300';
+        }
+
+        item.classList.add(...bgStyle.split(' '));
+
+        item.innerHTML = `
+          <!-- Sil Butonu (✕) -->
+          <button onclick="event.stopPropagation(); removeCommandAt(${idx})" class="absolute -top-1.5 -right-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-full w-4 h-4 sm:w-5 sm:h-5 text-[9px] sm:text-[10px] flex items-center justify-center font-black shadow border border-white transition-transform hover:scale-110" title="Bu adımı sil">✕</button>
+
+          <!-- Hatalı Adım Rozeti (❌) -->
+          <span class="step-error-badge hidden absolute -top-1.5 -left-1.5 bg-rose-700 text-white rounded-full w-4 h-4 sm:w-5 sm:h-5 text-[9px] sm:text-[10px] flex items-center justify-center font-black shadow border border-white">❌</span>
+
+          <!-- Yön İkonu & Adım Numarası -->
+          <div class="flex flex-col items-center leading-none mt-0.5 pointer-events-none">
+            <span class="cmd-icon text-lg sm:text-xl leading-none">${icon}</span>
+            <span class="cmd-num text-[9px] sm:text-[10px] font-black text-slate-700 mt-0.5">${idx + 1}</span>
+          </div>
+
+          <!-- Sıra Değiştirme Butonları (◀ / ▶) -->
+          <div class="flex items-center justify-between w-full px-0.5 gap-0.5">
+            ${idx > 0 
+              ? `<button onclick="event.stopPropagation(); moveCommand(${idx}, ${idx - 1})" class="w-4 h-3.5 sm:w-5 sm:h-4 bg-white/90 hover:bg-yellow-300 text-slate-800 rounded font-black text-[8px] sm:text-[9px] flex items-center justify-center shadow-xs border border-slate-300 transition-colors" title="Sola taşı">◀</button>` 
+              : `<span class="w-4 sm:w-5"></span>`}
+            ${idx < commands.length - 1 
+              ? `<button onclick="event.stopPropagation(); moveCommand(${idx}, ${idx + 1})" class="w-4 h-3.5 sm:w-5 sm:h-4 bg-white/90 hover:bg-yellow-300 text-slate-800 rounded font-black text-[8px] sm:text-[9px] flex items-center justify-center shadow-xs border border-slate-300 transition-colors" title="Sağa taşı">▶</button>` 
+              : `<span class="w-4 sm:w-5"></span>`}
+          </div>
+        `;
+
+        // Masaüstü Drag & Drop
+        item.ondragstart = (e) => {
+          if (isExecuting || isBuildMode) { e.preventDefault(); return; }
+          draggedCmdIdx = idx;
+          e.dataTransfer.setData('text/plain', idx);
+          e.dataTransfer.effectAllowed = 'move';
+          item.classList.add('dragging');
+        };
+
+        item.ondragover = (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        };
+
+        item.ondragenter = (e) => {
+          e.preventDefault();
+          if (draggedCmdIdx !== null && draggedCmdIdx !== idx) {
+            item.classList.add('drag-target');
+          }
+        };
+
+        item.ondragleave = () => {
+          item.classList.remove('drag-target');
+        };
+
+        item.ondrop = (e) => {
+          e.preventDefault();
+          item.classList.remove('drag-target');
+          const fromIdx = draggedCmdIdx !== null ? draggedCmdIdx : parseInt(e.dataTransfer.getData('text/plain'));
+          if (fromIdx !== null && !isNaN(fromIdx) && fromIdx !== idx) {
+            moveCommand(fromIdx, idx);
+          }
+        };
+
+        item.ondragend = () => {
+          draggedCmdIdx = null;
+          document.querySelectorAll('.step-card').forEach(c => c.classList.remove('dragging', 'drag-target'));
+        };
+
+        // Dokunmatik (Touch) Sürükle - Bırak Desteği
+        setupTouchDrag(item, idx);
+
+        tray.appendChild(item);
+      });
+    }
+
+    let touchOriginIdx = null;
+    function setupTouchDrag(el, idx) {
+      el.addEventListener('touchstart', (e) => {
+        if (isExecuting || isBuildMode) return;
+        if (e.target.tagName === 'BUTTON') return;
+        touchOriginIdx = idx;
+      }, { passive: true });
+
+      el.addEventListener('touchmove', (e) => {
+        if (touchOriginIdx === null) return;
+        const touch = e.touches[0];
+        const underEl = document.elementFromPoint(touch.clientX, touch.clientY);
+        const cardUnder = underEl ? underEl.closest('.step-card') : null;
+        document.querySelectorAll('.step-card').forEach(c => c.classList.remove('drag-target'));
+        if (cardUnder && cardUnder.dataset.index && parseInt(cardUnder.dataset.index) !== touchOriginIdx) {
+          cardUnder.classList.add('drag-target');
+        }
+      }, { passive: true });
+
+      el.addEventListener('touchend', (e) => {
+        if (touchOriginIdx === null) return;
+        const touch = e.changedTouches[0];
+        const underEl = document.elementFromPoint(touch.clientX, touch.clientY);
+        const cardUnder = underEl ? underEl.closest('.step-card') : null;
+        document.querySelectorAll('.step-card').forEach(c => c.classList.remove('drag-target'));
+        if (cardUnder && cardUnder.dataset.index) {
+          const targetIdx = parseInt(cardUnder.dataset.index);
+          if (!isNaN(targetIdx) && targetIdx !== touchOriginIdx) {
+            moveCommand(touchOriginIdx, targetIdx);
+          }
+        }
+        touchOriginIdx = null;
+      });
+    }
+
+    /* ==========================================================================
+       10. ALGORİTMAYI ÇALIŞTIRMA (3D YÜRÜYÜŞ & PARÇA TOPLAMA)
+       ========================================================================== */
+    async function runAlgorithm() {
+      if (isExecuting || isBuildMode) return;
+      if (commands.length === 0) {
+        showToast("Önce birkaç ok eklemelisin!", "🧭");
+        return;
+      }
+
+      initAudio();
+      isExecuting = true;
+      clearErrorHighlights();
+
+      const runBtn = document.getElementById('runButton');
+      runBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+      const lvl = LEVELS[currentLevelIndex];
+      playerPos = { ...lvl.startPos };
+      activeLevelBricks = JSON.parse(JSON.stringify(lvl.bricks));
+      collectedBricks = 0;
+      updateBrickCounter();
+      spawnItems();
+
+      const startWorld = gridToWorld(playerPos.x, playerPos.y);
+      characterMesh.position.set(startWorld.x, 0.1, startWorld.z);
+
+      await sleep(350);
+      let hitObstacle = false;
+
+      for (let i = 0; i < commands.length; i++) {
+        const cmdBox = document.getElementById(`cmd-${i}`);
+        if (cmdBox) cmdBox.classList.add('active-executing');
+
+        const dir = commands[i];
+        let nextX = playerPos.x;
+        let nextY = playerPos.y;
+        let targetRotation = characterMesh.rotation.y;
+
+        if (dir === 'up') {
+          nextY -= 1; targetRotation = Math.PI;
+        } else if (dir === 'down') {
+          nextY += 1; targetRotation = 0;
+        } else if (dir === 'left') {
+          nextX -= 1; targetRotation = -Math.PI / 2;
+        } else if (dir === 'right') {
+          nextX += 1; targetRotation = Math.PI / 2;
+        }
+
+        // Duvar Sınırı Kontrolü (HATA: BASAMAĞI KIRMIZI YAP!)
+        if (nextX < 0 || nextX >= lvl.gridSize || nextY < 0 || nextY >= lvl.gridSize) {
+          playSound('bump');
+          markStepError(cmdBox, i);
+          await animateStumble();
+          showToast("Aman! Lego alanının dışına çıktın!", "💥");
+          hitObstacle = true;
+          break;
+        }
+
+        // Kaya Engeli Kontrolü (HATA: BASAMAĞI KIRMIZI YAP!)
+        const isObs = lvl.obstacles.some(o => o.x === nextX && o.y === nextY);
+        if (isObs) {
+          playSound('bump');
+          markStepError(cmdBox, i);
+          await animateStumble();
+          showToast("Hop! Önünde bir Lego kayası var!", "🪨");
+          hitObstacle = true;
+          break;
+        }
+
+        playerPos.x = nextX;
+        playerPos.y = nextY;
+        const targetWorld = gridToWorld(playerPos.x, playerPos.y);
+
+        await animateWalkStep(targetWorld, targetRotation);
+
+        const brickIndex = activeLevelBricks.findIndex(b => b.x === playerPos.x && b.y === playerPos.y && !b.collected);
+        if (brickIndex !== -1) {
+          activeLevelBricks[brickIndex].collected = true;
+          collectedBricks++;
+          playSound('brick');
+          updateBrickCounter();
+          await animateCollectItem(playerPos.x, playerPos.y);
+        }
+
+        await sleep(150);
+        if (cmdBox && !cmdBox.classList.contains('error-step')) {
+          cmdBox.classList.remove('active-executing');
+        }
+      }
+
+      isExecuting = false;
+      runBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+      if (!hitObstacle) {
+        checkLevelCompletion();
+      }
+    }
+
+    function animateWalkStep(targetPos, targetRot) {
+      return new Promise(resolve => {
+        playSound('step');
+        const startX = characterMesh.position.x;
+        const startZ = characterMesh.position.z;
+        const startRot = characterMesh.rotation.y;
+        const duration = 380;
+        const startTime = performance.now();
+
+        let deltaRot = (targetRot - startRot) % (Math.PI * 2);
+        if (deltaRot > Math.PI) deltaRot -= Math.PI * 2;
+        if (deltaRot < -Math.PI) deltaRot += Math.PI * 2;
+
+        function step(now) {
+          const elapsed = now - startTime;
+          const t = Math.min(elapsed / duration, 1);
+          const easeT = 0.5 - 0.5 * Math.cos(t * Math.PI);
+
+          characterMesh.position.x = startX + (targetPos.x - startX) * easeT;
+          characterMesh.position.z = startZ + (targetPos.z - startZ) * easeT;
+          characterMesh.rotation.y = startRot + deltaRot * easeT;
+          characterMesh.position.y = 0.1 + Math.sin(t * Math.PI) * 0.22;
+
+          if (characterMesh.userData.leftLeg) {
+            const legSwing = Math.sin(t * Math.PI * 2) * 0.55;
+            characterMesh.userData.leftLeg.rotation.x = legSwing;
+            characterMesh.userData.rightLeg.rotation.x = -legSwing;
+            characterMesh.userData.leftArm.rotation.x = -legSwing * 0.8;
+            characterMesh.userData.rightArm.rotation.x = legSwing * 0.8;
+          }
+
+          if (t < 1) {
+            requestAnimationFrame(step);
+          } else {
+            characterMesh.position.y = 0.1;
+            if (characterMesh.userData.leftLeg) {
+              characterMesh.userData.leftLeg.rotation.x = 0;
+              characterMesh.userData.rightLeg.rotation.x = 0;
+              characterMesh.userData.leftArm.rotation.x = 0;
+              characterMesh.userData.rightArm.rotation.x = 0;
+            }
+            resolve();
+          }
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    function animateStumble() {
+      return new Promise(resolve => {
+        const startPos = characterMesh.position.clone();
+        const startTime = performance.now();
+        const duration = 300;
+
+        function step(now) {
+          const t = (now - startTime) / duration;
+          if (t < 1) {
+            characterMesh.position.x = startPos.x + Math.sin(t * Math.PI * 4) * 0.15;
+            requestAnimationFrame(step);
+          } else {
+            characterMesh.position.copy(startPos);
+            resolve();
+          }
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    function animateCollectItem(gx, gy) {
+      return new Promise(resolve => {
+        let itemMesh = null;
+        for (let i = 0; i < itemsGroup.children.length; i++) {
+          const child = itemsGroup.children[i];
+          if (child.userData && child.userData.brickRef && child.userData.brickRef.x === gx && child.userData.brickRef.y === gy) {
+            itemMesh = child;
+            break;
+          }
+        }
+        if (!itemMesh) {
+          resolve();
+          return;
+        }
+
+        const startY = itemMesh.position.y;
+        const startTime = performance.now();
+        const duration = 350;
+
+        function step(now) {
+          const t = Math.min((now - startTime) / duration, 1);
+          itemMesh.position.y = startY + t * 1.5;
+          itemMesh.rotation.y += 0.25;
+          const baseScale = itemMesh.userData.scaleBase || 0.65;
+          const s = (1 - t) * baseScale;
+          itemMesh.scale.set(s, s, s);
+
+          if (t < 1) {
+            requestAnimationFrame(step);
+          } else {
+            itemsGroup.remove(itemMesh);
+            resolve();
+          }
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    /* ==========================================================================
+       11. SEVİYE TAMAMLAMA & KENDİN BİRLEŞTİRME (İNŞA MODU)
+       ========================================================================== */
+    function checkLevelCompletion() {
+      const lvl = LEVELS[currentLevelIndex];
+      const allBricksCollected = collectedBricks === lvl.bricks.length;
+      const reachedGoal = playerPos.x === lvl.goal.x && playerPos.y === lvl.goal.y;
+
+      if (reachedGoal && allBricksCollected) {
+        completedLevels[currentLevelIndex] = true;
+        updateTreePartsHeader();
+
+        // Her dünyanın 5. seviyesi bittiğinde (5, 10, 15) -> KENDİN BİRLEŞTİRME MODUNA GEÇ!
+        if (lvl.id % 5 === 0) {
+          promptStartBuildingMode(lvl.worldIndex);
+        } else {
+          // Normal Seviye Başarısı
+          playSound('win');
+          triggerConfetti();
+
+          const modal = document.getElementById('celebrationModal');
+          const modalTitle = document.getElementById('modalTitle');
+          const modalDesc = document.getElementById('modalDesc');
+          const modalActionBtn = document.getElementById('modalActionBtn');
+          const emojiHdr = document.getElementById('modalEmojiHeader');
+          let pieceName = document.getElementById('modalPieceName');
+          let svgPiece = document.getElementById('modalSvgPiece');
+
+          if (!pieceName || !svgPiece) {
+            const visualHolder = document.getElementById('modalVisualHolder');
+            if (visualHolder) {
+              visualHolder.innerHTML = `
+                <div id="modalSvgPiece" class="scale-125 mb-2"></div>
+                <div id="modalPieceName" class="bg-white/90 px-3 py-1 rounded-full text-xs font-black text-emerald-800 shadow"></div>
+              `;
+              pieceName = document.getElementById('modalPieceName');
+              svgPiece = document.getElementById('modalSvgPiece');
+            }
+          }
+
+          if (emojiHdr) emojiHdr.innerText = "🎉 🪵 🧱";
+          if (modalTitle) modalTitle.innerText = `BÖLÜM ${lvl.id} TAMAMLANDI!`;
+          if (modalDesc) modalDesc.innerText = `Tebrikler! ${lvl.partName} başarıyla toplandı ve sırt çantana eklendi!`;
+          if (pieceName) pieceName.innerText = `${WORLDS[lvl.worldIndex].name} İçin Saklandı (${(lvl.id - 1) % 5 + 1} / 5)`;
+          if (svgPiece) svgPiece.innerHTML = `<span class="text-6xl">${lvl.partIcon}</span>`;
+
+          if (modalActionBtn) {
+            modalActionBtn.innerText = `BÖLÜM ${lvl.id + 1}'E GEÇ ➔`;
+            modalActionBtn.onclick = () => {
+              closeModal();
+              loadLevel(currentLevelIndex + 1);
+            };
+          }
+
+          modal.classList.remove('hidden');
+        }
+      } else if (reachedGoal && !allBricksCollected) {
+        showToast("Hedefe ulaştın ama bazı parçaları unuttun!", "🧱");
+        const lastCmdBox = document.getElementById(`cmd-${commands.length - 1}`);
+        if (lastCmdBox) markStepError(lastCmdBox, commands.length - 1);
+      } else {
+        showToast("Parçaları toplayıp Finish tabelasına gitmelisin!", "🏁");
+        const lastCmdBox = document.getElementById(`cmd-${commands.length - 1}`);
+        if (lastCmdBox) markStepError(lastCmdBox, commands.length - 1);
+      }
+    }
+
+    // 5 Görev Sonrası Çocuk İçin İnşa Modunu Başlatma Çağrısı
+    function promptStartBuildingMode(worldIdx) {
+      playSound('win');
+      triggerConfetti();
+
+      const world = WORLDS[worldIdx];
+      const modal = document.getElementById('celebrationModal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalDesc = document.getElementById('modalDesc');
+      const modalActionBtn = document.getElementById('modalActionBtn');
+      const emojiHdr = document.getElementById('modalEmojiHeader');
+      let pieceName = document.getElementById('modalPieceName');
+      let svgPiece = document.getElementById('modalSvgPiece');
+
+      if (!pieceName || !svgPiece) {
+        const visualHolder = document.getElementById('modalVisualHolder');
+        if (visualHolder) {
+          visualHolder.innerHTML = `
+            <div id="modalSvgPiece" class="scale-125 mb-2"></div>
+            <div id="modalPieceName" class="bg-white/90 px-3 py-1 rounded-full text-xs font-black text-emerald-800 shadow"></div>
+          `;
+          pieceName = document.getElementById('modalPieceName');
+          svgPiece = document.getElementById('modalSvgPiece');
+        }
+      }
+
+      if (emojiHdr) emojiHdr.innerText = "✨ 🔨 🧱 ✨";
+      if (modalTitle) modalTitle.innerText = `5 PARÇAYI DA TOPLADIN!`;
+      if (modalDesc) modalDesc.innerText = `Harika! Şimdi parçaları sırayla kendin birleştirerek ${world.name}'ni inşa etme zamanı!`;
+      if (pieceName) pieceName.innerText = `Lego İnşaat Atölyesi Açılıyor!`;
+      if (svgPiece) svgPiece.innerHTML = `<span class="text-6xl">${world.icon}</span>`;
+
+      if (modalActionBtn) {
+        modalActionBtn.innerText = `🧱 İNŞA ETMEYE BAŞLA! ➔`;
+        modalActionBtn.onclick = () => {
+          closeModal();
+          enterInteractiveBuildingMode(worldIdx);
+        };
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    /* ==========================================================================
+       12. ETKİLEŞİMLİ 3D LEGO BİRLEŞTİRME MODU (KULLANICI KENDİSİ İNŞA EDER)
+       ========================================================================== */
+    function enterInteractiveBuildingMode(worldIdx) {
+      isBuildMode = true;
+      currentBuildStep = 0;
+
+      // Kodlama panelini gizle, inşaat panelini aç
+      document.getElementById('codingFooter').classList.add('hidden');
+      document.getElementById('buildModeFooter').classList.remove('hidden');
+
+      // Sahnedeki diğer toplanabilir ve engelleri temizle
+      while (itemsGroup.children.length > 0) itemsGroup.remove(itemsGroup.children[0]);
+      while (obstaclesGroup.children.length > 0) obstaclesGroup.remove(obstaclesGroup.children[0]);
+      while (goalGroup.children.length > 0) goalGroup.remove(goalGroup.children[0]);
+
+      // 3D Kamerayı İnşaat Platformuna Odakla
+      targetCameraPos.set(0, 10.5, 12);
+      targetCameraLook.set(0, 1.8, 0);
+      isCameraMoving = true;
+
+      // Karakteri inşaatın yanına al
+      characterMesh.position.set(2.4, 0.1, 1.4);
+      characterMesh.rotation.y = -Math.PI / 4;
+
+      // İnşaat Grubu
+      if (buildAssemblyGroup) scene.remove(buildAssemblyGroup);
+      buildAssemblyGroup = new THREE.Group();
+      scene.add(buildAssemblyGroup);
+
+      renderBuildingTray(worldIdx);
+    }
+
+    function renderBuildingTray(worldIdx) {
+      const world = WORLDS[worldIdx];
+      const tray = document.getElementById('buildPiecesTray');
+      tray.innerHTML = '';
+
+      document.getElementById('buildStepBadge').innerText = `Adım ${currentBuildStep + 1} / 5`;
+      document.getElementById('buildInstructionText').innerText = currentBuildStep < 5 
+        ? `👉 Aşağıdaki ${world.parts[currentBuildStep]} parçasına dokunarak yerine oturt!`
+        : `🎉 Tebrikler! Tüm parçaları birleştirdin!`;
+
+      for (let i = 0; i < 5; i++) {
+        const btn = document.createElement('button');
+        btn.id = `buildBtn-${i}`;
+        const isCurrent = i === currentBuildStep;
+        const isPlaced = i < currentBuildStep;
+
+        btn.className = `p-2 rounded-2xl flex flex-col items-center justify-center border-3 transition-all ${
+          isPlaced
+            ? 'bg-emerald-100 border-emerald-500 text-emerald-800 opacity-60 cursor-default'
+            : isCurrent
+            ? 'build-active bg-yellow-100 border-yellow-500 text-yellow-950 scale-105 shadow-lg active:scale-95'
+            : 'bg-slate-100 border-slate-300 text-slate-400 opacity-40 cursor-not-allowed'
+        }`;
+
+        let icon = '🧱';
+        if (worldIdx === 0) icon = ['🪵', '🪵', '🍃', '🌿', '🍎'][i];
+        if (worldIdx === 1) icon = ['🧱', '🚪', '🪟', '🏠', '☁️'][i];
+        if (worldIdx === 2) icon = ['🖥️', '💻', '⌨️', '🖱️', '🔊'][i];
+
+        btn.innerHTML = `
+          <span class="text-2xl">${icon}</span>
+          <span class="text-[9px] font-black mt-0.5 leading-tight">${world.parts[i]}</span>
+          ${isPlaced ? '<span class="text-[10px] text-emerald-600 font-black">✓ Takıldı</span>' : ''}
+          ${isCurrent ? '<span class="text-[9px] text-emerald-700 font-black animate-bounce">DOKUN!</span>' : ''}
+        `;
+
+        if (isCurrent) {
+          btn.onclick = () => snapBuildPiece(worldIdx, i);
+        }
+
+        tray.appendChild(btn);
+      }
+    }
+
+    // Çocuğun Parçaya Dokunup Yerine Takması
+    async function snapBuildPiece(worldIdx, stepIdx) {
+      playSound('click');
+
+      // Her dünya için ilgili 3D Lego parçasını oluştur ve yukarıdan indirme animasyonu yap
+      let pieceMesh = null;
+      let targetY = 0;
+
+      if (worldIdx === 0) {
+        // --- AĞAÇ İNŞASI ---
+        if (stepIdx === 0) {
+          pieceMesh = createStandardLegoBrick(2, 2, 2.5, LEGO_COLORS.brownWood);
+          targetY = 0.1;
+        } else if (stepIdx === 1) {
+          pieceMesh = create3DTrunkPiece();
+          targetY = 2.4;
+          // İki dal ekle
+          const b1 = create3DBranchPiece(); b1.position.set(-0.8, 2.6, 0); b1.rotation.y = -Math.PI / 2; pieceMesh.add(b1);
+          const b2 = create3DBranchPiece(); b2.position.set(0.8, 2.6, 0); b2.rotation.y = Math.PI / 2; pieceMesh.add(b2);
+        } else if (stepIdx === 2) {
+          pieceMesh = create3DLeafBasePiece();
+          pieceMesh.scale.set(1.4, 1.4, 1.4);
+          targetY = 3.4;
+        } else if (stepIdx === 3) {
+          pieceMesh = create3DLeafTopPiece();
+          pieceMesh.scale.set(1.3, 1.3, 1.3);
+          targetY = 4.3;
+        } else if (stepIdx === 4) {
+          // 3 Elma
+          pieceMesh = new THREE.Group();
+          const a1 = create3DApplePiece(); a1.position.set(-0.8, 3.6, 0.6); pieceMesh.add(a1);
+          const a2 = create3DApplePiece(); a2.position.set(0.9, 3.7, 0.4); pieceMesh.add(a2);
+          const a3 = create3DApplePiece(); a3.position.set(0, 3.9, -0.9); pieceMesh.add(a3);
+          targetY = 0;
+        }
+      } else if (worldIdx === 1) {
+        // --- EV İNŞASI ---
+        if (stepIdx === 0) {
+          // Temel Duvarlar
+          pieceMesh = new THREE.Group();
+          const w1 = createStandardLegoBrick(4, 3, 1.4, LEGO_COLORS.legoYellow);
+          w1.position.set(0, 0.1, 0);
+          pieceMesh.add(w1);
+          targetY = 0;
+        } else if (stepIdx === 1) {
+          // Ön Kapı
+          pieceMesh = create3DHouseDoorPiece();
+          pieceMesh.position.set(0, 0, 1.25);
+          targetY = 0.1;
+        } else if (stepIdx === 2) {
+          // Yan Pencereler
+          pieceMesh = new THREE.Group();
+          const win1 = create3DHouseWindowPiece(); win1.position.set(-1.6, 0.8, 0); win1.rotation.y = Math.PI / 2; pieceMesh.add(win1);
+          const win2 = create3DHouseWindowPiece(); win2.position.set(1.6, 0.8, 0); win2.rotation.y = -Math.PI / 2; pieceMesh.add(win2);
+          targetY = 0;
+        } else if (stepIdx === 3) {
+          // Kırmızı Çatı
+          pieceMesh = create3DHouseRoofPiece();
+          pieceMesh.scale.set(2.0, 1.6, 2.4);
+          targetY = 1.9;
+        } else if (stepIdx === 4) {
+          // Baca ve Duman
+          pieceMesh = create3DHouseChimneyPiece();
+          pieceMesh.position.set(0.8, 0, -0.4);
+          targetY = 2.4;
+        }
+      } else if (worldIdx === 2) {
+        // --- BİLGİSAYAR İNŞASI ---
+        if (stepIdx === 0) {
+          // Masa Tablası + Kasa
+          pieceMesh = new THREE.Group();
+          const desk = createBeveledBrickMesh(4.5, 0.25, 3.0, LEGO_COLORS.brownWood);
+          desk.position.set(0, 0.12, 0);
+          pieceMesh.add(desk);
+          const pcCase = create3DCompCasePiece();
+          pcCase.position.set(1.5, 0.25, -0.4);
+          pieceMesh.add(pcCase);
+          targetY = 0;
+        } else if (stepIdx === 1) {
+          // Geniş Monitör
+          pieceMesh = create3DCompMonitorPiece();
+          pieceMesh.position.set(-0.2, 0, -0.5);
+          targetY = 0.25;
+        } else if (stepIdx === 2) {
+          // Klavye
+          pieceMesh = create3DCompKeyboardPiece();
+          pieceMesh.position.set(-0.2, 0, 0.5);
+          targetY = 0.25;
+        } else if (stepIdx === 3) {
+          // Fare & Fare Altlığı
+          pieceMesh = create3DCompMousePiece();
+          pieceMesh.position.set(0.9, 0, 0.5);
+          targetY = 0.25;
+        } else if (stepIdx === 4) {
+          // Hoparlörler & Işıklar
+          pieceMesh = create3DCompSpeakerPiece();
+          pieceMesh.position.set(-0.2, 0, -0.5);
+          targetY = 0.25;
+        }
+      }
+
+      if (pieceMesh) {
+        pieceMesh.position.set(0, 10, 0);
+        buildAssemblyGroup.add(pieceMesh);
+
+        // Gökten inip yerine oturma animasyonu
+        await animateSnapDown(pieceMesh, targetY);
+        playSound('snap');
+        triggerConfetti();
+      }
+
+      currentBuildStep++;
+
+      if (currentBuildStep < 5) {
+        renderBuildingTray(worldIdx);
+      } else {
+        // TÜM 5 PARÇA TAMAMLANDI!
+        finishWorldConstruction(worldIdx);
+      }
+    }
+
+    // 5 Parçanın Tamamı Birleştirildiğinde Büyük Kutlama
+    function finishWorldConstruction(worldIdx) {
+      playSound('fanfare');
+      triggerConfetti();
+      animateCelebrationDance();
+
+      renderBuildingTray(worldIdx);
+
+      const world = WORLDS[worldIdx];
+      const modal = document.getElementById('celebrationModal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalDesc = document.getElementById('modalDesc');
+      const modalActionBtn = document.getElementById('modalActionBtn');
+      const emojiHdr = document.getElementById('modalEmojiHeader');
+      const modalVisualHolder = document.getElementById('modalVisualHolder');
+      let pieceName = document.getElementById('modalPieceName');
+      let svgPiece = document.getElementById('modalSvgPiece');
+
+      if (!pieceName || !svgPiece) {
+        if (modalVisualHolder) {
+          modalVisualHolder.innerHTML = `
+            <div id="modalSvgPiece" class="scale-125 mb-2"></div>
+            <div id="modalPieceName" class="bg-white/90 px-3 py-1 rounded-full text-xs font-black text-emerald-800 shadow"></div>
+          `;
+          pieceName = document.getElementById('modalPieceName');
+          svgPiece = document.getElementById('modalSvgPiece');
+        }
+      }
+
+      if (emojiHdr) emojiHdr.innerText = "🏆 ✨ 🧱 ✨ 🏆";
+      if (modalTitle) modalTitle.innerText = `${world.name.toUpperCase()} TAMAMLANDI!`;
+      if (modalDesc) modalDesc.innerText = `Harika bir iş çıkardın! Tüm parçaları kendi ellerinle birleştirdin ve eserin hazır!`;
+
+      if (svgPiece) svgPiece.innerHTML = `<span class="text-6xl animate-bounce inline-block">${world.icon}</span>`;
+      if (pieceName) pieceName.innerText = `Usta Bir Lego Mimarı Oldun!`;
+
+      if (worldIdx < 2) {
+        const nextWorld = WORLDS[worldIdx + 1];
+        modalActionBtn.innerText = `${nextWorld.title} İNŞASINA GEÇ (Bölüm ${nextWorld.id * 5 + 1}) ➔`;
+        modalActionBtn.onclick = () => {
+          closeModal();
+          loadLevel((worldIdx + 1) * 5);
+        };
+      } else {
+        modalActionBtn.innerText = `🏆 TEBRİKLER! OYUNU BAŞARIYLA BİTİRDİN (YENİDEN BAŞLA)`;
+        modalActionBtn.onclick = () => {
+          closeModal();
+          completedLevels = new Array(15).fill(false);
+          loadLevel(0);
+        };
+      }
+
+      setTimeout(() => {
+        modal.classList.remove('hidden');
+      }, 700);
+    }
+
+    function animateSnapDown(mesh, targetY) {
+      return new Promise(resolve => {
+        const startY = mesh.position.y;
+        const duration = 400;
+        const startTime = performance.now();
+
+        function step(now) {
+          const elapsed = now - startTime;
+          const t = Math.min(elapsed / duration, 1);
+          const ease = t < 0.7 ? (t / 0.7) * (t / 0.7) : 1 + Math.sin((t - 0.7) * Math.PI * 3.3) * 0.12 * (1 - t);
+          mesh.position.y = startY + (targetY - startY) * ease;
+
+          if (t < 1) {
+            requestAnimationFrame(step);
+          } else {
+            mesh.position.y = targetY;
+            resolve();
+          }
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    function animateCelebrationDance() {
+      let startTime = performance.now();
+      function dance(now) {
+        if (isBuildMode && currentBuildStep >= 5) {
+          const t = (now - startTime) * 0.006;
+          characterMesh.position.y = 0.1 + Math.abs(Math.sin(t * 3)) * 0.4;
+          if (characterMesh.userData.leftArm) {
+            characterMesh.userData.leftArm.rotation.x = Math.PI + Math.sin(t * 5) * 0.4;
+            characterMesh.userData.rightArm.rotation.x = Math.PI + Math.cos(t * 5) * 0.4;
+          }
+          characterMesh.rotation.y += 0.03;
+          requestAnimationFrame(dance);
+        }
+      }
+      requestAnimationFrame(dance);
+    }
+
+    /* ==========================================================================
+       13. YARDIMCI VE ARAYÜZ FONKSİYONLARI
+       ========================================================================== */
+    function updateTreePartsHeader() {
+      const lvl = LEVELS[currentLevelIndex];
+      const worldStartLevel = lvl.worldIndex * 5;
+
+      const worldIcons = [
+        ['🪵', '🪵', '🍃', '🌿', '🍎'],
+        ['🧱', '🚪', '🪟', '🏠', '☁️'],
+        ['🖥️', '💻', '⌨️', '🖱️', '🔊']
+      ][lvl.worldIndex];
+
+      for (let i = 1; i <= 5; i++) {
+        const iconEl = document.getElementById(`partIcon-${i}`);
+        if (iconEl) {
+          iconEl.innerText = worldIcons[i - 1];
+          const levelIdx = worldStartLevel + (i - 1);
+
+          if (completedLevels[levelIdx]) {
+            iconEl.classList.remove('opacity-30', 'grayscale');
+            iconEl.classList.add('opacity-100', 'scale-125');
+          } else if (levelIdx === currentLevelIndex) {
+            iconEl.classList.remove('grayscale');
+            iconEl.classList.add('opacity-80', 'animate-pulse');
+          } else {
+            iconEl.classList.remove('scale-125', 'animate-pulse');
+            iconEl.classList.add('opacity-30', 'grayscale');
+          }
+        }
+      }
+    }
+
+    function updateBrickCounter() {
+      const lvl = LEVELS[currentLevelIndex];
+      const counterEl = document.getElementById('brickCounter');
+      counterEl.innerText = `${collectedBricks} / ${lvl.bricks.length}`;
+    }
+
+    function openStartScreen() {
+      playSound('click');
+      document.getElementById('startScreen').classList.remove('hidden');
+    }
+
+    function selectHero(heroKey) {
+      playSound('click');
+      selectedHeroKey = heroKey;
+      document.querySelectorAll('.hero-opt').forEach(el => {
+        el.classList.remove('border-red-500', 'border-sky-500', 'border-green-600', 'border-purple-600', 'border-4');
+        el.classList.add('border-2', 'border-slate-200');
+      });
+      const chosen = document.getElementById(`heroBtn-${heroKey}`);
+      if (chosen) {
+        chosen.classList.remove('border-slate-200');
+        chosen.classList.add('border-4', 'border-blue-600');
+      }
+      renderHeroAvatar(heroKey);
+      spawnPlayer();
+    }
+
+    function startGame() {
+      playSound('win');
+      document.getElementById('startScreen').classList.add('hidden');
+      loadLevel(0);
+    }
+
+    function renderHeroAvatar(heroKey) {
+      const hero = HEROES[heroKey];
+      const avatarBox = document.getElementById('headerAvatar');
+      avatarBox.innerHTML = generateAvatarSVG(heroKey, 36);
+    }
+
+    function generateAvatarSVG(heroKey, size = 42) {
+      const h = HEROES[heroKey];
+      return `
+        <svg width="${size}" height="${size}" viewBox="0 0 100 110">
+          <rect x="30" y="16" width="40" height="34" rx="10" fill="#facc15" stroke="#b45309" stroke-width="2" />
+          <rect x="42" y="8" width="16" height="8" rx="3" fill="#facc15" stroke="#b45309" stroke-width="1.5" />
+          <circle cx="43" cy="30" r="3" fill="#0f172a" />
+          <circle cx="57" cy="30" r="3" fill="#0f172a" />
+          <circle cx="41.5" cy="28.5" r="1" fill="#ffffff" />
+          <circle cx="55.5" cy="28.5" r="1" fill="#ffffff" />
+          <path d="M 43 38 Q 50 45 57 38" stroke="#0f172a" stroke-width="3" fill="none" stroke-linecap="round" />
+          ${h.hatType === 'cap' ? '<path d="M 22 22 Q 50 6 78 22 L 86 24" fill="#ef4444" stroke="#991b1b" stroke-width="3" />' : ''}
+          ${h.hatType === 'hair' ? '<path d="M 24 20 Q 50 8 76 20 Q 82 40 76 34" fill="#f59e0b" stroke="#b45309" stroke-width="2" />' : ''}
+          ${h.hatType === 'safari' ? '<rect x="18" y="18" width="64" height="6" rx="3" fill="#15803d" /><circle cx="50" cy="14" r="8" fill="#16a34a" />' : ''}
+          ${h.hatType === 'helmet' ? '<path d="M 26 22 Q 50 4 74 22 Z" fill="#9333ea" stroke="#6b21a8" stroke-width="2" />' : ''}
+          <polygon points="24,54 76,54 70,100 30,100" fill="${'#' + h.torsoColor.toString(16).padStart(6, '0')}" />
+        </svg>
+      `;
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('celebrationModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function nextLevel() {
+      closeModal();
+      if (currentLevelIndex < LEVELS.length - 1) {
+        loadLevel(currentLevelIndex + 1);
+      } else {
+        loadLevel(0);
+      }
+    }
+    window.nextLevel = nextLevel;
+
+    function openLevelSelectModal() {
+      playSound('click');
+      renderLevelSelectList();
+      const modal = document.getElementById('levelSelectModal');
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeLevelSelectModal() {
+      const modal = document.getElementById('levelSelectModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function renderLevelSelectList() {
+      const holder = document.getElementById('levelSelectListHolder');
+      if (!holder) return;
+      holder.innerHTML = '';
+
+      WORLDS.forEach((world, wIdx) => {
+        const worldBox = document.createElement('div');
+        worldBox.className = 'bg-slate-50 rounded-2xl p-2.5 border border-slate-200';
+        
+        let titleColor = 'text-emerald-700';
+        if (wIdx === 1) titleColor = 'text-amber-700';
+        if (wIdx === 2) titleColor = 'text-blue-700';
+
+        worldBox.innerHTML = `
+          <div class="text-xs font-black ${titleColor} flex items-center gap-1.5 mb-2">
+            <span>${world.icon}</span>
+            <span>${world.name} (Bölüm ${wIdx * 5 + 1} - ${(wIdx + 1) * 5})</span>
+          </div>
+          <div class="grid grid-cols-5 gap-1.5" id="worldLevels-${wIdx}"></div>
+        `;
+        holder.appendChild(worldBox);
+
+        const grid = worldBox.querySelector(`#worldLevels-${wIdx}`);
+        for (let i = 0; i < 5; i++) {
+          const lvlIdx = wIdx * 5 + i;
+          const lvl = LEVELS[lvlIdx];
+          const isDone = completedLevels[lvlIdx];
+          const isCurrent = lvlIdx === currentLevelIndex;
+
+          const btn = document.createElement('button');
+          btn.className = `p-1.5 rounded-xl flex flex-col items-center justify-center border-2 transition-all ${
+            isCurrent
+              ? 'bg-yellow-400 border-yellow-600 text-yellow-950 font-black shadow-md scale-105'
+              : isDone
+              ? 'bg-emerald-100 border-emerald-400 text-emerald-900 font-bold'
+              : 'bg-white border-slate-200 text-slate-700 font-semibold hover:border-blue-400'
+          }`;
+          btn.innerHTML = `
+            <span class="text-base sm:text-lg leading-none">${lvl.partIcon}</span>
+            <span class="text-[10px] font-black mt-0.5">${lvl.id}</span>
+            ${isDone ? '<span class="text-[8px] text-emerald-700 font-black">✓</span>' : ''}
+          `;
+          btn.onclick = () => {
+            playSound('click');
+            closeLevelSelectModal();
+            loadLevel(lvlIdx);
+          };
+          grid.appendChild(btn);
+        }
+      });
+    }
+
+    function showToast(text, icon = '⚠️') {
+      const toast = document.getElementById('toastMessage');
+      document.getElementById('toastText').innerText = text;
+      document.getElementById('toastIcon').innerText = icon;
+      toast.classList.remove('-translate-y-28');
+      toast.classList.add('translate-y-4');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-4');
+        toast.classList.add('-translate-y-28');
+      }, 2800);
+    }
+
+    function triggerConfetti() {
+      if (window.confetti) {
+        confetti({
+          particleCount: 80,
+          spread: 80,
+          origin: { y: 0.6 }
+        });
+      }
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /* ==========================================================================
+       14. THREE.JS RENDER LOOP & CANLI ANİMASYONLAR
+       ========================================================================== */
+    function animate(time) {
+      requestAnimationFrame(animate);
+      const sec = time * 0.001 || 0;
+
+      if (isCameraMoving) {
+        camera.position.lerp(targetCameraPos, 0.06);
+        controls.target.lerp(targetCameraLook, 0.06);
+        if (camera.position.distanceTo(targetCameraPos) < 0.1 && controls.target.distanceTo(targetCameraLook) < 0.1) {
+          isCameraMoving = false;
+        }
+      }
+      controls.update();
+
+      // Toplanabilir parçaları hafifçe havada döndür ve yüzdür
+      itemsGroup.children.forEach(item => {
+        if (item.userData && item.userData.initialY) {
+          item.rotation.y = sec * 2.2 + item.userData.timeOffset;
+          item.position.y = item.userData.initialY + Math.sin(sec * 3.5 + item.userData.timeOffset) * 0.12;
+        }
+      });
+
+      // Finish tabelası hafif canlı salınım
+      if (goalGroup.children[0] && goalGroup.children[0].userData.finishSprite) {
+        const spr = goalGroup.children[0].userData.finishSprite;
+        spr.position.y = 0.04 + Math.sin(sec * 3.5) * 0.02;
+      }
+
+      // İnşaat modu tamamlandığında modeli yavaşça 360 derece döndür
+      if (isBuildMode && currentBuildStep >= 5 && buildAssemblyGroup) {
+        buildAssemblyGroup.rotation.y = sec * 0.4;
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function () {
+      init3DScene();
+      renderHeroAvatar(selectedHeroKey);
+
+      ['leo', 'ela', 'can', 'maya'].forEach(key => {
+        const holder = document.getElementById(`heroPreview-${key}`);
+        if (holder) holder.innerHTML = generateAvatarSVG(key, 52);
+      });
+
+      loadLevel(0);
+    };
+  </script>
+</body>
+</html>
